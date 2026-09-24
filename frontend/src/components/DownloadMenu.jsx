@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { DownloadIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -31,14 +32,19 @@ const setQuality = (q) => {
   listeners.forEach((fn) => fn())
 }
 
-export default function DownloadMenu({ onDownload, compact = false, label = 'Télécharger' }) {
+export default function DownloadMenu({
+  onDownload,
+  compact = false,
+  label = 'Télécharger',
+  className,
+}) {
   const q = useSyncExternalStore(subscribe, () => quality)
   return (
-    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+    <div className={cn('flex items-center gap-2', className)} onClick={(e) => e.stopPropagation()}>
       <Select value={q} onValueChange={setQuality}>
         <SelectTrigger
           size="sm"
-          className={compact ? 'w-[110px]' : 'w-[120px]'}
+          className={compact ? 'hidden w-[110px] sm:flex' : 'w-[120px] shrink-0'}
           title="Qualité — « Originale » : Opus/M4A sans réencodage"
         >
           <SelectValue />
@@ -56,7 +62,7 @@ export default function DownloadMenu({ onDownload, compact = false, label = 'Té
           <DownloadIcon />
         </Button>
       ) : (
-        <Button onClick={() => onDownload(q)}>
+        <Button className="flex-1 sm:flex-none" onClick={() => onDownload(q)}>
           <DownloadIcon />
           {label}
         </Button>

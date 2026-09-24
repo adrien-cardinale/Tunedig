@@ -27,13 +27,13 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-xl">
+      <DialogContent className="flex flex-col sm:max-h-[85dvh] sm:max-w-xl">
         {error && <p className="text-destructive text-sm">{error}</p>}
 
         {!album && !error && (
-          <div className="flex gap-5">
-            <Skeleton className="size-36 shrink-0 rounded-lg" />
-            <div className="flex-1 space-y-3 py-2">
+          <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-stretch">
+            <Skeleton className="size-28 shrink-0 rounded-lg sm:size-36" />
+            <div className="w-full flex-1 space-y-3 py-2">
               <Skeleton className="h-5 w-3/4" />
               <Skeleton className="h-4 w-1/2" />
               <Skeleton className="h-8 w-56" />
@@ -43,19 +43,19 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
 
         {album && (
           <>
-            <div className="flex gap-5">
+            <div className="flex shrink-0 flex-col items-center gap-5 sm:flex-row sm:items-stretch">
               {album.thumbnail ? (
                 <img
-                  className="size-36 shrink-0 rounded-lg object-cover"
+                  className="size-28 shrink-0 rounded-lg object-cover sm:size-36"
                   src={album.thumbnail}
                   alt={album.title}
                 />
               ) : (
-                <div className="bg-muted text-muted-foreground flex size-36 shrink-0 items-center justify-center rounded-lg">
+                <div className="bg-muted text-muted-foreground flex size-28 shrink-0 items-center sm:size-36 justify-center rounded-lg">
                   <MusicIcon className="size-10" />
                 </div>
               )}
-              <DialogHeader className="min-w-0 justify-center gap-3">
+              <DialogHeader className="w-full min-w-0 justify-center gap-3 sm:w-auto">
                 <DialogTitle className="leading-snug">{album.title}</DialogTitle>
                 <DialogDescription>
                   {album.artist}
@@ -63,6 +63,7 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
                   {` · ${album.tracks.length} piste${album.tracks.length > 1 ? 's' : ''}`}
                 </DialogDescription>
                 <DownloadMenu
+                  className="w-full sm:w-auto"
                   label="Télécharger l'album"
                   onDownload={(quality) => {
                     onDownloadAlbum(album, quality)
@@ -83,7 +84,7 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
                   {t.duration && (
-                    <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+                    <span className="text-muted-foreground hidden shrink-0 text-xs tabular-nums sm:inline">
                       {t.duration}
                     </span>
                   )}

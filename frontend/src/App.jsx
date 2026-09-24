@@ -99,8 +99,8 @@ export default function App() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
-      <main className="min-w-0 flex-1 px-5 py-10 lg:px-12">
+    <div className="flex min-h-dvh flex-col lg:flex-row">
+      <main className="min-w-0 flex-1 px-4 pt-6 pb-24 sm:px-5 lg:px-12 lg:py-10">
         <div className="mx-auto max-w-3xl">
           <header>
             <div className="flex items-start justify-between">
@@ -112,39 +112,48 @@ export default function App() {
               </h1>
               <ThemeToggle />
             </div>
-            <p className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-2 text-sm">
+            <p className="text-muted-foreground mt-2 flex min-w-0 flex-wrap items-center gap-x-2 text-sm">
               Recherchez, téléchargez, taguez — prêt pour Navidrome
               {musicDir && (
-                <span className="text-muted-foreground/70 flex items-center gap-1 font-mono text-xs">
-                  <FolderIcon className="size-3" />
-                  {musicDir}
+                <span className="text-muted-foreground/70 flex max-w-full min-w-0 items-center gap-1 font-mono text-xs">
+                  <FolderIcon className="size-3 shrink-0" />
+                  <span className="truncate" title={musicDir}>
+                    {musicDir}
+                  </span>
                 </span>
               )}
             </p>
           </header>
 
-          <form className="mt-7 flex gap-2" onSubmit={onSubmit}>
-            <div className="relative flex-1">
-              <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <form className="mt-5 flex gap-2 sm:mt-7" onSubmit={onSubmit}>
+            <div className="relative min-w-0 flex-1">
+              <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 hidden size-4 -translate-y-1/2 sm:block" />
               <Input
-                className="h-10 pl-9"
+                className="h-10 sm:pl-9"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Artiste, titre, album…"
-                autoFocus
+                autoFocus={window.matchMedia('(hover: hover)').matches}
               />
             </div>
-            <Button type="submit" size="lg" className="h-10" disabled={loading || !query.trim()}>
-              Rechercher
+            <Button
+              type="submit"
+              size="icon"
+              className="size-10 sm:w-auto sm:px-6"
+              aria-label="Rechercher"
+              disabled={loading || !query.trim()}
+            >
+              <SearchIcon className="sm:hidden" />
+              <span className="hidden sm:inline">Rechercher</span>
             </Button>
           </form>
 
           <Tabs value={type} onValueChange={switchType} className="mt-4 mb-6">
-            <TabsList>
-              <TabsTrigger value="songs" className="px-6">
+            <TabsList className="w-full sm:w-fit">
+              <TabsTrigger value="songs" className="flex-1 px-6">
                 Titres
               </TabsTrigger>
-              <TabsTrigger value="albums" className="px-6">
+              <TabsTrigger value="albums" className="flex-1 px-6">
                 Albums
               </TabsTrigger>
             </TabsList>
