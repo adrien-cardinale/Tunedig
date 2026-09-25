@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -278,6 +279,15 @@ def listenbrainz_retry_track(mbid: str):
         raise HTTPException(404, str(exc)) from exc
     except listenbrainz.DecisionError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@app.get("/api/stream")
+def stream(path: str):
+    music_root = MUSIC_DIR.resolve()
+    file = (MUSIC_DIR / path).resolve()
+    if not file.is_relative_to(music_root) or not file.is_file():
+        raise HTTPException(404, "Fichier introuvable")
+    return FileResponse(file)
 
 
 # En production : sert le frontend compilé (frontend/dist)

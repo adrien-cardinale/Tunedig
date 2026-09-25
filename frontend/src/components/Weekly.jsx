@@ -4,6 +4,8 @@ import {
   HeartIcon,
   ListPlusIcon,
   MusicIcon,
+  PauseIcon,
+  PlayIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   Trash2Icon,
@@ -31,6 +33,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { reloadPlaylists, usePlaylists } from './DownloadMenu.jsx'
+import Player from './Player.jsx'
 
 const STATUS = {
   pending: { label: 'En cours', variant: 'secondary' },
@@ -52,6 +55,17 @@ function formatDate(date) {
     month: 'long',
     year: 'numeric',
   })
+}
+
+function isPlayable(track) {
+  return Boolean(track.path) && DECIDABLE.includes(track.status)
+}
+
+function nextPlayable(playlists, track) {
+  const playlist = (playlists || []).find((p) => p.tracks.some((t) => t.mbid === track.mbid))
+  if (!playlist) return null
+  const index = playlist.tracks.findIndex((t) => t.mbid === track.mbid)
+  return playlist.tracks.slice(index + 1).find(isPlayable) || null
 }
 
 function countDecisions(playlists) {
@@ -122,6 +136,22 @@ function DecisionButtons({ track, busy, onDecide, onMove }) {
   )
 }
 
+function PlayButton({ track, active, onPlay }) {
+  const label = active ? 'Pause' : 'Écouter'
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className="shrink-0"
+      title={label}
+      aria-label={label}
+      onClick={() => onPlay(track)}
+    >
+      {active ? <PauseIcon /> : <PlayIcon />}
+    </Button>
+  )
+}
+
 function RetryButton({ track, busy, onRetry }) {
   return (
     <Button
@@ -138,7 +168,7 @@ function RetryButton({ track, busy, onRetry }) {
   )
 }
 
-function TrackRow({ track, busy, onDecide, onRetry, onMove }) {
+function TrackRow({ track, busy, current, playing, onDecide, onRetry, onMove, onPlay }) {
   const status = STATUS[track.status] || { label: track.status, variant: 'outline' }
   const deleted = track.status === 'deleted'
   return (
@@ -146,6 +176,7 @@ function TrackRow({ track, busy, onDecide, onRetry, onMove }) {
       className={cn(
         'bg-card flex items-center gap-3 rounded-xl border p-3',
         deleted && 'opacity-60',
+        current && 'ring-primary/40 ring-1',
       )}
     >
       {track.thumbnail ? (
@@ -183,6 +214,9 @@ function TrackRow({ track, busy, onDecide, onRetry, onMove }) {
           )}
         </div>
       </div>
+      {isPlayable(track) && (
+        <PlayButton track={track} active={current && playing} onPlay={onPlay} />
+      )}
       {DECIDABLE.includes(track.status) && (
         <DecisionButtons track={track} busy={busy} onDecide={onDecide} onMove={onMove} />
       )}
@@ -193,7 +227,17 @@ function TrackRow({ track, busy, onDecide, onRetry, onMove }) {
   )
 }
 
-function TrackList({ tracks, busyId, onDecide, onRetry, onMove, processing = false }) {
+function TrackList({
+  tracks,
+  busyId,
+  currentMbid,
+  playing,
+  onDecide,
+  onRetry,
+  onMove,
+  onPlay,
+  processing = false,
+}) {
   if (tracks.length === 0) {
     return (
       <p className="text-muted-foreground py-4 text-sm">
@@ -208,16 +252,19 @@ function TrackList({ tracks, busyId, onDecide, onRetry, onMove, processing = fal
           key={t.mbid}
           track={t}
           busy={busyId === t.mbid}
+          current={currentMbid === t.mbid}
+          playing={playing}
           onDecide={onDecide}
           onRetry={onRetry}
           onMove={onMove}
+          onPlay={onPlay}
         />
       ))}
     </div>
   )
 }
 
-function OlderPlaylist({ playlist, busyId, onDecide, onRetry, onMove }) {
+function OlderPlaylist({ playlist, busyId, currentMbid, playing, onDecide, onRetry, onMove, onPlay }) {
   const [open, setOpen] = useState(false)
   return (
     <section className="border-t pt-4">
@@ -242,9 +289,12 @@ function OlderPlaylist({ playlist, busyId, onDecide, onRetry, onMove }) {
           <TrackList
             tracks={playlist.tracks}
             busyId={busyId}
+            currentMbid={currentMbid}
+            playing={playing}
             onDecide={onDecide}
             onRetry={onRetry}
             onMove={onMove}
+            onPlay={onPlay}
           />
         </div>
       )}
@@ -431,6 +481,8 @@ export default function Weekly({ jobs, navidromePlaylist }) {
   const [retrying, setRetrying] = useState(false)
   const [movingTrack, setMovingTrack] = useState(null)
   const [lastMoveTargetId, setLastMoveTargetId] = useState('')
+  const [current, setCurrent] = useState(null)
+  const [playing, setPlaying] = useState(false)
 
   const jobRunning = jobs.some(
     (j) => j.kind === 'playlist' && (j.status === 'queued' || j.status === 'downloading'),
@@ -481,8 +533,33 @@ export default function Weekly({ jobs, navidromePlaylist }) {
       })),
     )
 
+  const closePlayerIfRemoved = (updated) =>
+    setCurrent((playingTrack) =>
+      playingTrack?.mbid === updated.mbid && (updated.decision === 'discard' || !isPlayable(updated))
+        ? null
+        : playingTrack,
+    )
+
+  const togglePlaying = useCallback(() => setPlaying((p) => !p), [])
+
+  const play = (track) => {
+    if (track.mbid === current?.mbid) {
+      togglePlaying()
+      return
+    }
+    setCurrent(track)
+    setPlaying(true)
+  }
+
+  const playNext = () => {
+    const next = current && nextPlayable(playlists, current)
+    if (next) setCurrent(next)
+    else setPlaying(false)
+  }
+
   const trackMoved = (updated, playlistId) => {
     replaceTrack(updated)
+    closePlayerIfRemoved(updated)
     setLastMoveTargetId(playlistId)
     setMovingTrack(null)
   }
@@ -493,7 +570,9 @@ export default function Weekly({ jobs, navidromePlaylist }) {
     setBusyId(track.mbid)
     setError(null)
     try {
-      replaceTrack(await api.decideListenbrainzTrack(track.mbid, decision))
+      const updated = await api.decideListenbrainzTrack(track.mbid, decision)
+      replaceTrack(updated)
+      closePlayerIfRemoved(updated)
     } catch (e) {
       setError(`Action impossible : ${e.message}`)
     } finally {
@@ -542,7 +621,7 @@ export default function Weekly({ jobs, navidromePlaylist }) {
   const [latest, ...older] = playlists || []
 
   return (
-    <div>
+    <div className={cn(current && 'pb-24')}>
       <Header
         latest={latest}
         counts={countDecisions(playlists || [])}
@@ -575,9 +654,12 @@ export default function Weekly({ jobs, navidromePlaylist }) {
           <TrackList
             tracks={latest.tracks}
             busyId={busyId}
+            currentMbid={current?.mbid}
+            playing={playing}
             onDecide={decide}
             onRetry={retryTrack}
             onMove={openMove}
+            onPlay={play}
             processing={!latest.processedAt}
           />
           {older.map((p) => (
@@ -585,9 +667,12 @@ export default function Weekly({ jobs, navidromePlaylist }) {
               key={p.mbid}
               playlist={p}
               busyId={busyId}
+              currentMbid={current?.mbid}
+              playing={playing}
               onDecide={decide}
               onRetry={retryTrack}
               onMove={openMove}
+              onPlay={play}
             />
           ))}
         </div>
@@ -605,6 +690,13 @@ export default function Weekly({ jobs, navidromePlaylist }) {
           onMoved={trackMoved}
         />
       )}
+      <Player
+        track={current}
+        playing={playing}
+        onTogglePlay={togglePlaying}
+        onClose={() => setCurrent(null)}
+        onEnded={playNext}
+      />
     </div>
   )
 }

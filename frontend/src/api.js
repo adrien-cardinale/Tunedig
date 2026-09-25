@@ -72,3 +72,5 @@ export const moveListenbrainzTrack = (mbid, playlistId) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ playlistId }),
   })
+
+export const streamUrl = (path) => `/api/stream?path=${encodeURIComponent(path)}`
