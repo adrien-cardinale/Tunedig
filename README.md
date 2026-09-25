@@ -1,4 +1,4 @@
-# yt-get
+# Tunedig
 
 Web UI to search YouTube Music (tracks or albums), download them as audio
 files via **yt-dlp** and tag them automatically (ID3v2.3: title, artist, album,
@@ -91,7 +91,7 @@ manually. Otherwise, run a scan from Navidrome or wait for its automatic scan.
 ## ListenBrainz Weekly Exploration
 
 Every week, ListenBrainz generates a "Weekly Exploration" playlist of tracks
-you have never listened to. yt-get can download it automatically so you can
+you have never listened to. Tunedig can download it automatically so you can
 try the tracks in Navidrome, then decide track by track what to keep.
 
 Set these environment variables (with Docker: copy `.env.example` to `.env`):
@@ -128,7 +128,7 @@ When both the user and the token are set:
   the music folder, so Navidrome imports it. Deleted tracks are removed from
   it.
 - The state (processed playlists, decisions) is stored in
-  `.yt-get/listenbrainz.json` inside the music folder.
+  `.tunedig/listenbrainz.json` inside the music folder.
 
 ## Disclaimer
 

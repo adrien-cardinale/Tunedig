@@ -1,4 +1,4 @@
-"""API yt-get : recherche YouTube Music, téléchargement et tagging pour Navidrome."""
+"""API tunedig : recherche YouTube Music, téléchargement et tagging pour Navidrome."""
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,7 +27,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="yt-get", lifespan=lifespan)
+app = FastAPI(title="tunedig", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

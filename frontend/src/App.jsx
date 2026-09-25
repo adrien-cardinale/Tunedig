@@ -16,7 +16,7 @@ function ThemeToggle() {
     const next = !dark
     setDark(next)
     document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('yt-get-theme', next ? 'dark' : 'light')
+    localStorage.setItem('tunedig-theme', next ? 'dark' : 'light')
   }
   return (
     <Button variant="ghost" size="icon" onClick={toggle} title="Basculer le thème">
@@ -117,7 +117,7 @@ export default function App() {
                 <span className="bg-primary text-primary-foreground flex size-10 items-center justify-center rounded-xl">
                   <Music2Icon className="size-5" />
                 </span>
-                yt-get
+                Tunedig
               </h1>
               <ThemeToggle />
             </div>

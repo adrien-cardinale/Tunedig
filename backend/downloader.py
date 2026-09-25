@@ -269,7 +269,7 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
     cover = fetch_cover(cover_url)
     covers: dict[str, bytes | None] = {}
     errors = []
-    with tempfile.TemporaryDirectory(prefix="yt-get-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="tunedig-") as tmp:
         tmp_dir = Path(tmp)
         for i, track in enumerate(tracks):
             jt = job["tracks"][i]

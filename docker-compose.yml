@@ -1,7 +1,7 @@
 services:
-  yt-get:
+  tunedig:
     build: .
-    container_name: yt-get
+    container_name: tunedig
     ports:
       - "8000:8000"
     volumes:

@@ -30,7 +30,7 @@ def trigger_scan() -> None:
             "t": token,
             "s": salt,
             "v": "1.16.1",
-            "c": "yt-get",
+            "c": "tunedig",
             "f": "json",
         },
         timeout=10,

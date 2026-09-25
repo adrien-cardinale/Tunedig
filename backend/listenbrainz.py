@@ -40,7 +40,8 @@ QUALITY = "best"
 REQUEST_TIMEOUT = 15
 FIRST_PASS_DELAY = 10
 
-STATE_FILE = MUSIC_DIR / ".yt-get" / "listenbrainz.json"
+STATE_FILE = MUSIC_DIR / ".tunedig" / "listenbrainz.json"
+LEGACY_STATE_FILE = MUSIC_DIR / ".yt-get" / "listenbrainz.json"
 PLAYLISTS_DIR = MUSIC_DIR / "Playlists"
 
 DECISIONS = ("keep", "discard")
@@ -184,9 +185,10 @@ def _empty_state() -> dict:
 
 
 def _load_state() -> dict:
-    if not STATE_FILE.exists():
+    path = STATE_FILE if STATE_FILE.exists() else LEGACY_STATE_FILE
+    if not path.exists():
         return _empty_state()
-    with STATE_FILE.open(encoding="utf-8") as fh:
+    with path.open(encoding="utf-8") as fh:
         state = json.load(fh)
     return {**_empty_state(), **state}
 

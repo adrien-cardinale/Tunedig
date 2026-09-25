@@ -18,7 +18,7 @@ const OPTIONS = [
   { id: 'mp3-128', label: 'MP3 128' },
 ]
 
-let quality = localStorage.getItem('yt-get-quality') || 'best'
+let quality = localStorage.getItem('tunedig-quality') || 'best'
 const listeners = new Set()
 
 const subscribe = (fn) => {
@@ -28,7 +28,7 @@ const subscribe = (fn) => {
 
 const setQuality = (q) => {
   quality = q
-  localStorage.setItem('yt-get-quality', q)
+  localStorage.setItem('tunedig-quality', q)
   listeners.forEach((fn) => fn())
 }
 
