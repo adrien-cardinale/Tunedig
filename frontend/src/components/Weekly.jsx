@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ChevronDownIcon,
   HeartIcon,
+  ListPlusIcon,
   MusicIcon,
   RefreshCwIcon,
   RotateCcwIcon,
@@ -10,8 +11,26 @@ import {
 import * as api from '../api.js'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { reloadPlaylists, usePlaylists } from './DownloadMenu.jsx'
 
 const STATUS = {
   pending: { label: 'En cours', variant: 'secondary' },
@@ -24,6 +43,7 @@ const STATUS = {
 
 const DECIDABLE = ['downloaded', 'existing']
 const RETRYABLE = ['error', 'unmatched']
+const NEW_PLAYLIST = '__new__'
 
 function formatDate(date) {
   if (!date) return ''
@@ -40,6 +60,7 @@ function countDecisions(playlists) {
     pending: tracks.filter((t) => DECIDABLE.includes(t.status) && !t.decision).length,
     kept: tracks.filter((t) => t.decision === 'keep').length,
     discarded: tracks.filter((t) => t.decision === 'discard').length,
+    moved: tracks.filter((t) => t.movedTo && t.decision !== 'discard').length,
     failed: tracks.filter((t) => RETRYABLE.includes(t.status)).length,
   }
 }
@@ -58,13 +79,25 @@ function syncMessage(result) {
   return `« ${result.playlist} » est déjà synchronisée.`
 }
 
-function DecisionButtons({ track, busy, onDecide }) {
+function DecisionButtons({ track, busy, onDecide, onMove }) {
   const discardTitle =
     track.status === 'existing'
       ? 'Marquer comme non gardée (fichier conservé)'
       : 'Supprimer le fichier'
   return (
     <div className="flex shrink-0 items-center gap-1">
+      {onMove && (
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          title="Déplacer vers une playlist…"
+          aria-label="Déplacer vers une playlist…"
+          disabled={busy}
+          onClick={() => onMove(track)}
+        >
+          <ListPlusIcon />
+        </Button>
+      )}
       <Button
         size="icon-sm"
         variant={track.decision === 'keep' ? 'default' : 'ghost'}
@@ -105,7 +138,7 @@ function RetryButton({ track, busy, onRetry }) {
   )
 }
 
-function TrackRow({ track, busy, onDecide, onRetry }) {
+function TrackRow({ track, busy, onDecide, onRetry, onMove }) {
   const status = STATUS[track.status] || { label: track.status, variant: 'outline' }
   const deleted = track.status === 'deleted'
   return (
@@ -142,10 +175,16 @@ function TrackRow({ track, busy, onDecide, onRetry }) {
           <Badge variant={status.variant} title={track.error || undefined}>
             {status.label}
           </Badge>
+          {track.movedTo && (
+            <Badge variant="outline" className="min-w-0" title={`Déplacée vers ${track.movedTo.name}`}>
+              <ListPlusIcon />
+              <span className="truncate">{track.movedTo.name}</span>
+            </Badge>
+          )}
         </div>
       </div>
       {DECIDABLE.includes(track.status) && (
-        <DecisionButtons track={track} busy={busy} onDecide={onDecide} />
+        <DecisionButtons track={track} busy={busy} onDecide={onDecide} onMove={onMove} />
       )}
       {RETRYABLE.includes(track.status) && (
         <RetryButton track={track} busy={busy} onRetry={onRetry} />
@@ -154,7 +193,7 @@ function TrackRow({ track, busy, onDecide, onRetry }) {
   )
 }
 
-function TrackList({ tracks, busyId, onDecide, onRetry, processing = false }) {
+function TrackList({ tracks, busyId, onDecide, onRetry, onMove, processing = false }) {
   if (tracks.length === 0) {
     return (
       <p className="text-muted-foreground py-4 text-sm">
@@ -171,13 +210,14 @@ function TrackList({ tracks, busyId, onDecide, onRetry, processing = false }) {
           busy={busyId === t.mbid}
           onDecide={onDecide}
           onRetry={onRetry}
+          onMove={onMove}
         />
       ))}
     </div>
   )
 }
 
-function OlderPlaylist({ playlist, busyId, onDecide, onRetry }) {
+function OlderPlaylist({ playlist, busyId, onDecide, onRetry, onMove }) {
   const [open, setOpen] = useState(false)
   return (
     <section className="border-t pt-4">
@@ -204,6 +244,7 @@ function OlderPlaylist({ playlist, busyId, onDecide, onRetry }) {
             busyId={busyId}
             onDecide={onDecide}
             onRetry={onRetry}
+            onMove={onMove}
           />
         </div>
       )}
@@ -211,7 +252,133 @@ function OlderPlaylist({ playlist, busyId, onDecide, onRetry }) {
   )
 }
 
-function Header({ latest, counts, syncing, onSync, retrying, onRetryAll }) {
+function NewPlaylistField({ onCreated }) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const create = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const playlist = await api.createPlaylist(name.trim())
+      await reloadPlaylists()
+      onCreated(playlist.id)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitOnEnter = (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (name.trim() && !busy) create()
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex gap-2">
+        <Input
+          autoFocus
+          placeholder="Nom de la playlist"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={submitOnEnter}
+        />
+        <Button type="button" variant="outline" disabled={busy || !name.trim()} onClick={create}>
+          Créer
+        </Button>
+      </div>
+      {error && <p className="text-destructive text-sm break-words">{error}</p>}
+    </div>
+  )
+}
+
+function MoveDialog({ track, navidromePlaylist, initialPlaylistId, onClose, onMoved }) {
+  const playlists = usePlaylists(true)
+  const [playlistId, setPlaylistId] = useState(initialPlaylistId)
+  const [creating, setCreating] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const weeklyName = navidromePlaylist.toLowerCase()
+  const targets = (playlists || []).filter((p) => p.name.toLowerCase() !== weeklyName)
+  const selectedId = targets.some((p) => p.id === playlistId) ? playlistId : ''
+
+  const changePlaylist = (value) => {
+    setCreating(value === NEW_PLAYLIST)
+    if (value !== NEW_PLAYLIST) setPlaylistId(value)
+  }
+
+  const selectCreated = (id) => {
+    setPlaylistId(id)
+    setCreating(false)
+  }
+
+  const move = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await api.moveListenbrainzTrack(track.mbid, selectedId)
+      onMoved(updated, selectedId)
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  const changeOpen = (open) => {
+    if (!open && !busy) onClose()
+  }
+
+  return (
+    <Dialog open onOpenChange={changeOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Déplacer vers une playlist</DialogTitle>
+          <DialogDescription>
+            « {track.title} » quittera {navidromePlaylist}.
+          </DialogDescription>
+        </DialogHeader>
+        <Select value={creating ? NEW_PLAYLIST : selectedId} onValueChange={changePlaylist}>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder={playlists ? 'Choisir une playlist' : 'Chargement…'} />
+          </SelectTrigger>
+          <SelectContent>
+            {targets.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                <span className="truncate">{p.name}</span>
+              </SelectItem>
+            ))}
+            {targets.length > 0 && <SelectSeparator />}
+            <SelectItem value={NEW_PLAYLIST}>Nouvelle playlist…</SelectItem>
+          </SelectContent>
+        </Select>
+        {creating && <NewPlaylistField onCreated={selectCreated} />}
+        {error && <p className="text-destructive text-sm break-words">{error}</p>}
+        <DialogFooter>
+          <Button disabled={busy || creating || !selectedId} onClick={move}>
+            Déplacer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PlaylistTarget({ navidromePlaylist }) {
+  return (
+    <p className="text-muted-foreground text-xs">
+      {navidromePlaylist
+        ? `Playlist Navidrome : ${navidromePlaylist}`
+        : 'Playlists m3u dans Playlists/'}
+    </p>
+  )
+}
+
+function Header({ latest, counts, navidromePlaylist, syncing, onSync, retrying, onRetryAll }) {
   return (
     <div className="mb-4 flex items-start justify-between gap-3">
       <div className="min-w-0">
@@ -221,8 +388,10 @@ function Header({ latest, counts, syncing, onSync, retrying, onRetryAll }) {
         <p className="text-muted-foreground text-sm">
           {latest && `${formatDate(latest.date)} · `}
           {counts.pending} à trier · {counts.kept} gardées · {counts.discarded} supprimées
+          {counts.moved > 0 && ` · ${counts.moved} déplacées`}
           {counts.failed > 0 && ` · ${counts.failed} en échec`}
         </p>
+        <PlaylistTarget navidromePlaylist={navidromePlaylist} />
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {counts.failed > 0 && (
@@ -252,7 +421,7 @@ function Header({ latest, counts, syncing, onSync, retrying, onRetryAll }) {
   )
 }
 
-export default function Weekly({ jobs }) {
+export default function Weekly({ jobs, navidromePlaylist }) {
   const [playlists, setPlaylists] = useState(null)
   const [error, setError] = useState(null)
   const [message, setMessage] = useState(null)
@@ -260,6 +429,8 @@ export default function Weekly({ jobs }) {
   const [awaitedPlaylist, setAwaitedPlaylist] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [retrying, setRetrying] = useState(false)
+  const [movingTrack, setMovingTrack] = useState(null)
+  const [lastMoveTargetId, setLastMoveTargetId] = useState('')
 
   const jobRunning = jobs.some(
     (j) => j.kind === 'playlist' && (j.status === 'queued' || j.status === 'downloading'),
@@ -302,17 +473,27 @@ export default function Weekly({ jobs }) {
     }
   }
 
+  const replaceTrack = (updated) =>
+    setPlaylists((current) =>
+      current.map((p) => ({
+        ...p,
+        tracks: p.tracks.map((t) => (t.mbid === updated.mbid ? updated : t)),
+      })),
+    )
+
+  const trackMoved = (updated, playlistId) => {
+    replaceTrack(updated)
+    setLastMoveTargetId(playlistId)
+    setMovingTrack(null)
+  }
+
+  const openMove = navidromePlaylist ? setMovingTrack : null
+
   const decide = async (track, decision) => {
     setBusyId(track.mbid)
     setError(null)
     try {
-      const updated = await api.decideListenbrainzTrack(track.mbid, decision)
-      setPlaylists((current) =>
-        current.map((p) => ({
-          ...p,
-          tracks: p.tracks.map((t) => (t.mbid === updated.mbid ? updated : t)),
-        })),
-      )
+      replaceTrack(await api.decideListenbrainzTrack(track.mbid, decision))
     } catch (e) {
       setError(`Action impossible : ${e.message}`)
     } finally {
@@ -365,6 +546,7 @@ export default function Weekly({ jobs }) {
       <Header
         latest={latest}
         counts={countDecisions(playlists || [])}
+        navidromePlaylist={navidromePlaylist}
         syncing={syncing}
         onSync={sync}
         retrying={retrying}
@@ -395,6 +577,7 @@ export default function Weekly({ jobs }) {
             busyId={busyId}
             onDecide={decide}
             onRetry={retryTrack}
+            onMove={openMove}
             processing={!latest.processedAt}
           />
           {older.map((p) => (
@@ -404,6 +587,7 @@ export default function Weekly({ jobs }) {
               busyId={busyId}
               onDecide={decide}
               onRetry={retryTrack}
+              onMove={openMove}
             />
           ))}
         </div>
@@ -411,6 +595,15 @@ export default function Weekly({ jobs }) {
         <p className="text-muted-foreground py-20 text-center text-sm">
           Aucune playlist pour l’instant. Lancez une synchronisation.
         </p>
+      )}
+      {movingTrack && (
+        <MoveDialog
+          track={movingTrack}
+          navidromePlaylist={navidromePlaylist}
+          initialPlaylistId={lastMoveTargetId}
+          onClose={() => setMovingTrack(null)}
+          onMoved={trackMoved}
+        />
       )}
     </div>
   )

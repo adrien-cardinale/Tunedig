@@ -107,6 +107,7 @@ Set these environment variables (with Docker: copy `.env.example` to `.env`):
 | `LISTENBRAINZ_TOKEN` | | Your user token: ListenBrainz profile page → *User token* |
 | `LISTENBRAINZ_RETENTION_DAYS` | `0` | Delete undecided tracks after this many days (`0` = never) |
 | `LISTENBRAINZ_CHECK_HOURS` | `6` | Interval between two checks for a new playlist |
+| `LISTENBRAINZ_PLAYLIST_NAME` | `Weekly Exploration` | Name of the Navidrome playlist that receives the tracks |
 
 When both the user and the token are set:
 
@@ -129,9 +130,17 @@ When both the user and the token are set:
 - Undecided tracks stay until you decide, unless
   `LISTENBRAINZ_RETENTION_DAYS` is greater than 0: undecided tracks older
   than that are then deleted automatically.
-- An `.m3u` playlist is written to `Playlists/<title> <YYYY-MM-DD>.m3u` in
-  the music folder, so Navidrome imports it. Deleted tracks are removed from
-  it.
+- With Navidrome configured, the tracks are added through the Subsonic API
+  to a single cumulative Navidrome playlist, week after week, once the scan
+  completes. Its name comes from `LISTENBRAINZ_PLAYLIST_NAME` (default
+  "Weekly Exploration"); it is created if missing. Deleted tracks, and
+  already present tracks marked as not kept, are removed from it.
+- With Navidrome configured, each downloaded track also shows a move button:
+  it moves the track from the weekly playlist to another Navidrome playlist
+  (existing or created on the spot) and marks it as kept.
+- Without Navidrome, an `.m3u` playlist is written to
+  `Playlists/<title> <YYYY-MM-DD>.m3u` in the music folder, one per week.
+  Deleted tracks are removed from it.
 - The state (processed playlists, decisions) is stored in
   `.tunedig/listenbrainz.json` inside the music folder.
 

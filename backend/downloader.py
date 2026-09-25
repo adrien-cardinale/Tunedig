@@ -276,6 +276,7 @@ def _playlist_song_ids(job: dict, tracks: list[dict]) -> tuple[list[str], int]:
         meta = track["meta"]
         song_id = navidrome.find_song_id(relative, meta["title"], meta["artist"])
         if song_id:
+            jt["songId"] = song_id
             song_ids.append(song_id)
     return song_ids, len(done)
 

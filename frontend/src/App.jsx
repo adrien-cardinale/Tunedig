@@ -37,6 +37,7 @@ export default function App() {
   const [musicDir, setMusicDir] = useState('')
   const [navidrome, setNavidrome] = useState(false)
   const [listenbrainz, setListenbrainz] = useState(false)
+  const [listenbrainzPlaylist, setListenbrainzPlaylist] = useState(null)
   const lastSearch = useRef('')
   const lastSearchType = useRef(null)
 
@@ -47,6 +48,7 @@ export default function App() {
         setMusicDir(c.musicDir)
         setNavidrome(c.navidrome)
         setListenbrainz(c.listenbrainz)
+        setListenbrainzPlaylist(c.listenbrainzPlaylist)
       })
       .catch(() => {})
   }, [])
@@ -184,7 +186,7 @@ export default function App() {
           )}
 
           {type === 'weekly' ? (
-            <Weekly jobs={jobs} />
+            <Weekly jobs={jobs} navidromePlaylist={listenbrainzPlaylist} />
           ) : (
             <Results
               results={results}

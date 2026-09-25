@@ -115,3 +115,23 @@ def find_song_id(relative_path: str, title: str, artist: str) -> str | None:
 
 def add_to_playlist(playlist_id: str, song_ids: list[str]) -> None:
     _call("updatePlaylist", {"playlistId": playlist_id, "songIdToAdd": song_ids})
+
+
+def find_playlist_by_name(name: str) -> dict | None:
+    wanted = name.casefold()
+    return next((p for p in list_playlists() if p["name"].casefold() == wanted), None)
+
+
+def get_playlist_entries(playlist_id: str) -> list[dict]:
+    data = _call("getPlaylist", {"id": playlist_id})
+    return data.get("playlist", {}).get("entry", [])
+
+
+def remove_from_playlist(playlist_id: str, song_ids: list[str]) -> None:
+    unwanted = set(song_ids)
+    indexes = [
+        index for index, entry in enumerate(get_playlist_entries(playlist_id))
+        if entry.get("id") in unwanted
+    ]
+    if indexes:
+        _call("updatePlaylist", {"playlistId": playlist_id, "songIndexToRemove": indexes})

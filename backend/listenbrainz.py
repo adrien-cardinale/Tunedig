@@ -31,6 +31,7 @@ LISTENBRAINZ_USER = os.environ.get("LISTENBRAINZ_USER", "")
 LISTENBRAINZ_TOKEN = os.environ.get("LISTENBRAINZ_TOKEN", "")
 LISTENBRAINZ_RETENTION_DAYS = _env_int("LISTENBRAINZ_RETENTION_DAYS", 0)
 LISTENBRAINZ_CHECK_HOURS = max(1, _env_int("LISTENBRAINZ_CHECK_HOURS", 6))
+LISTENBRAINZ_PLAYLIST_NAME = os.environ.get("LISTENBRAINZ_PLAYLIST_NAME", "") or "Weekly Exploration"
 
 API_URL = "https://api.listenbrainz.org"
 JSPF_PLAYLIST_EXTENSION = "https://musicbrainz.org/doc/jspf#playlist"
@@ -181,7 +182,7 @@ def match_track(title: str, artist: str) -> dict | None:
 
 
 def _empty_state() -> dict:
-    return {"playlists": {}, "tracks": {}}
+    return {"playlists": {}, "tracks": {}, "navidrome_playlist_id": None}
 
 
 def _load_state() -> dict:
@@ -242,6 +243,8 @@ def _in_m3u(entry: dict) -> bool:
 
 
 def _write_m3u(state: dict, playlist_mbid: str) -> None:
+    if navidrome.enabled():
+        return
     playlist = state["playlists"].get(playlist_mbid)
     if not playlist:
         return
@@ -274,6 +277,8 @@ def _new_track_entry(playlist_mbid: str, track: dict) -> dict:
         "downloaded_at": None,
         "decided_at": None,
         "error": None,
+        "navidromeSongId": None,
+        "movedTo": None,
     }
 
 
@@ -298,6 +303,8 @@ def _apply_job_track(entry: dict, job_track: dict) -> None:
         entry["path"] = job_track["path"]
         entry["status"] = "existing" if job_track.get("existed") else "downloaded"
         entry["downloaded_at"] = _now()
+        if job_track.get("songId"):
+            entry["navidromeSongId"] = job_track["songId"]
     else:
         entry["status"] = "error"
         entry["error"] = job_track.get("error") or "échec du téléchargement"
@@ -352,6 +359,31 @@ def _match_new_tracks(playlist_mbid: str, tracks: list[dict]) -> tuple[dict, lis
     return entries, matched
 
 
+def _known_navidrome_playlist_id() -> str | None:
+    playlist_id = _read_state().get("navidrome_playlist_id")
+    if playlist_id and any(p["id"] == playlist_id for p in navidrome.list_playlists()):
+        return playlist_id
+    return None
+
+
+def _find_or_create_navidrome_playlist() -> str:
+    playlist = navidrome.find_playlist_by_name(LISTENBRAINZ_PLAYLIST_NAME)
+    return (playlist or navidrome.create_playlist(LISTENBRAINZ_PLAYLIST_NAME))["id"]
+
+
+def _navidrome_playlist_id() -> str | None:
+    if not navidrome.enabled():
+        return None
+    try:
+        playlist_id = _known_navidrome_playlist_id() or _find_or_create_navidrome_playlist()
+    except Exception:  # noqa: BLE001 — la playlist Navidrome ne doit pas bloquer le téléchargement
+        logger.warning("Playlist Navidrome « %s » indisponible", LISTENBRAINZ_PLAYLIST_NAME, exc_info=True)
+        return None
+    with _editing_state() as state:
+        state["navidrome_playlist_id"] = playlist_id
+    return playlist_id
+
+
 def _start_download(playlist_mbid: str, title: str, matched: list[tuple[str, dict]]) -> dict:
     return start_job(
         kind="playlist",
@@ -362,6 +394,7 @@ def _start_download(playlist_mbid: str, title: str, matched: list[tuple[str, dic
         cover_url=None,
         quality=QUALITY,
         on_done=_job_done_callback(playlist_mbid, [mbid for mbid, _ in matched]),
+        playlist_id=_navidrome_playlist_id(),
     )
 
 
@@ -518,13 +551,17 @@ def _delete_track_file(entry: dict) -> None:
     entry["status"] = "deleted"
 
 
-def _discard(entry: dict) -> bool:
+def _discard(entry: dict) -> tuple[str | None, str | None]:
+    in_playlist = entry["status"] in PLAYLIST_STATUSES
+    moved_to_id = (entry.get("movedTo") or {}).get("id")
     entry["decision"] = "discard"
     entry["decided_at"] = _now()
-    if entry["status"] != "downloaded" or not entry.get("path"):
-        return False
-    _delete_track_file(entry)
-    return True
+    entry["movedTo"] = None
+    if entry["status"] == "downloaded" and entry.get("path"):
+        _delete_track_file(entry)
+    if not in_playlist:
+        return None, None
+    return entry.get("navidromeSongId"), moved_to_id
 
 
 def _keep(entry: dict) -> None:
@@ -543,6 +580,19 @@ def _scan_library() -> None:
         logger.warning("Scan Navidrome impossible après suppression", exc_info=True)
 
 
+def _remove_from_playlist(playlist_id: str | None, song_ids: list[str]) -> None:
+    if not song_ids or not playlist_id or not navidrome.enabled():
+        return
+    try:
+        navidrome.remove_from_playlist(playlist_id, song_ids)
+    except Exception:  # noqa: BLE001 — le retrait de la playlist est facultatif
+        logger.warning("Retrait de la playlist Navidrome impossible", exc_info=True)
+
+
+def _remove_from_navidrome_playlist(song_ids: list[str]) -> None:
+    _remove_from_playlist(_read_state().get("navidrome_playlist_id"), song_ids)
+
+
 def decide(recording_mbid: str, decision: str) -> dict:
     if decision not in DECISIONS:
         raise DecisionError(f"Décision inconnue : {decision}")
@@ -552,16 +602,79 @@ def decide(recording_mbid: str, decision: str) -> dict:
             raise TrackNotFound(f"Piste inconnue : {recording_mbid}")
         if entry["status"] not in (*PLAYLIST_STATUSES, "deleted"):
             raise DecisionError("Cette piste n'a pas été téléchargée")
-        deleted = False
+        status_before = entry["status"]
+        song_to_remove, moved_to_id = None, None
         if decision == "keep":
             _keep(entry)
         else:
-            deleted = _discard(entry)
+            song_to_remove, moved_to_id = _discard(entry)
         _write_m3u(state, entry["playlist"])
         result = _serialize_track(recording_mbid, entry)
-    if deleted:
+    if song_to_remove:
+        _remove_from_navidrome_playlist([song_to_remove])
+        _remove_from_playlist(moved_to_id, [song_to_remove])
+    if status_before != "deleted" and entry["status"] == "deleted":
         _scan_library()
     return result
+
+
+def _movable_entry(recording_mbid: str) -> dict:
+    entry = _read_state()["tracks"].get(recording_mbid)
+    if entry is None:
+        raise TrackNotFound(f"Piste inconnue : {recording_mbid}")
+    if entry["status"] not in PLAYLIST_STATUSES:
+        raise DecisionError("Cette piste n'est pas dans la bibliothèque")
+    return entry
+
+
+def _navidrome_song_id(entry: dict) -> str:
+    song_id = entry.get("navidromeSongId") or navidrome.find_song_id(
+        _relative_path(entry.get("path")), entry["title"], entry["artist"]
+    )
+    if not song_id:
+        raise DecisionError("Piste introuvable dans Navidrome, lance un scan puis réessaie")
+    return song_id
+
+
+def _navidrome_playlist_name(playlist_id: str) -> str:
+    playlist = next((p for p in navidrome.list_playlists() if p["id"] == playlist_id), None)
+    if playlist is None:
+        raise DecisionError("Playlist inconnue")
+    return playlist["name"]
+
+
+def _add_to_target_playlist(entry: dict, playlist_id: str) -> tuple[str, str]:
+    try:
+        song_id = _navidrome_song_id(entry)
+        name = _navidrome_playlist_name(playlist_id)
+        navidrome.add_to_playlist(playlist_id, [song_id])
+    except (RuntimeError, requests.RequestException) as exc:
+        raise DecisionError(f"Navidrome : {exc}") from exc
+    return song_id, name
+
+
+def _record_move(recording_mbid: str, song_id: str, playlist_id: str, name: str) -> dict:
+    with _editing_state() as state:
+        entry = state["tracks"][recording_mbid]
+        entry.update(
+            decision="keep",
+            decided_at=_now(),
+            movedTo={"id": playlist_id, "name": name},
+            navidromeSongId=song_id,
+        )
+        return _serialize_track(recording_mbid, entry)
+
+
+def move_to_playlist(recording_mbid: str, playlist_id: str) -> dict:
+    if not navidrome.enabled():
+        raise DecisionError("Navidrome non configuré")
+    entry = _movable_entry(recording_mbid)
+    song_id, name = _add_to_target_playlist(entry, playlist_id)
+    weekly_id = _read_state().get("navidrome_playlist_id")
+    previous_id = (entry.get("movedTo") or {}).get("id")
+    for source_id in {weekly_id, previous_id} - {None, playlist_id}:
+        _remove_from_playlist(source_id, [song_id])
+    return _record_move(recording_mbid, song_id, playlist_id, name)
 
 
 def _is_expired(entry: dict, cutoff: datetime) -> bool:
@@ -576,13 +689,50 @@ def apply_retention() -> None:
     cutoff = datetime.now(timezone.utc) - timedelta(days=LISTENBRAINZ_RETENTION_DAYS)
     with _editing_state() as state:
         expired = [e for e in state["tracks"].values() if _is_expired(e, cutoff)]
-        for entry in expired:
-            _discard(entry)
+        songs_to_remove = [song_id for song_id, _ in map(_discard, expired) if song_id]
         for playlist_mbid in {e["playlist"] for e in expired}:
             _write_m3u(state, playlist_mbid)
     if expired:
         logger.info("Rétention : %d piste(s) non triée(s) supprimée(s)", len(expired))
+        _remove_from_navidrome_playlist(songs_to_remove)
         _scan_library()
+
+
+def _tracks_missing_from_playlist(state: dict) -> list[tuple[str, dict]]:
+    return [
+        (mbid, entry) for mbid, entry in state["tracks"].items()
+        if entry["status"] in PLAYLIST_STATUSES
+        and entry.get("decision") != "discard"
+        and entry.get("path")
+        and not entry.get("navidromeSongId")
+    ]
+
+
+def sync_navidrome_playlist() -> None:
+    if not navidrome.enabled():
+        return
+    missing = _tracks_missing_from_playlist(_read_state())
+    if not missing:
+        return
+    playlist_id = _navidrome_playlist_id()
+    if not playlist_id:
+        return
+    found = {}
+    for mbid, entry in missing:
+        song_id = navidrome.find_song_id(_relative_path(entry["path"]), entry["title"], entry["artist"])
+        if song_id:
+            found[mbid] = song_id
+    if not found:
+        return
+    try:
+        navidrome.add_to_playlist(playlist_id, list(found.values()))
+    except Exception:  # noqa: BLE001 — l'ajout sera retenté au prochain passage
+        logger.warning("Ajout a posteriori à la playlist Navidrome impossible", exc_info=True)
+        return
+    with _editing_state() as state:
+        for mbid, song_id in found.items():
+            state["tracks"][mbid]["navidromeSongId"] = song_id
+    logger.info("Playlist Navidrome : %d piste(s) ajoutée(s) a posteriori", len(found))
 
 
 def fail_interrupted_tracks() -> None:
@@ -606,6 +756,7 @@ def _serialize_track(mbid: str, entry: dict) -> dict:
         "decision": entry.get("decision"),
         "path": _relative_path(entry.get("path")) if entry["status"] != "deleted" else None,
         "error": entry.get("error"),
+        "movedTo": entry.get("movedTo"),
     }
 
 
@@ -636,7 +787,7 @@ def _sync_all_sources() -> None:
 
 
 def _run_pass() -> None:
-    for step in (_sync_all_sources, fail_interrupted_tracks, apply_retention):
+    for step in (_sync_all_sources, fail_interrupted_tracks, apply_retention, sync_navidrome_playlist):
         try:
             step()
         except Exception:  # noqa: BLE001 — le thread de fond ne doit jamais s'arrêter

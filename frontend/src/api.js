@@ -65,3 +65,10 @@ export const retryListenbrainz = () => request('/api/listenbrainz/retry', { meth
 
 export const retryListenbrainzTrack = (mbid) =>
   request(`/api/listenbrainz/tracks/${encodeURIComponent(mbid)}/retry`, { method: 'POST' })
+
+export const moveListenbrainzTrack = (mbid, playlistId) =>
+  request(`/api/listenbrainz/tracks/${encodeURIComponent(mbid)}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playlistId }),
+  })

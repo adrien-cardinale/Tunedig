@@ -1,5 +1,6 @@
 """API tunedig : recherche YouTube Music, téléchargement et tagging pour Navidrome."""
 
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -178,6 +179,9 @@ def config():
         "musicDir": str(MUSIC_DIR),
         "navidrome": navidrome.enabled(),
         "listenbrainz": listenbrainz.enabled(),
+        "listenbrainzPlaylist": (
+            listenbrainz.LISTENBRAINZ_PLAYLIST_NAME if navidrome.enabled() else None
+        ),
     }
 
 
@@ -230,15 +234,31 @@ def listenbrainz_sync():
     if not listenbrainz.enabled():
         raise HTTPException(400, "ListenBrainz non configuré")
     try:
-        return listenbrainz.sync_latest(background=True)
+        result = listenbrainz.sync_latest(background=True)
     except listenbrainz.ListenBrainzError as exc:
         raise HTTPException(502, str(exc)) from exc
+    threading.Thread(target=listenbrainz.sync_navidrome_playlist, daemon=True).start()
+    return result
 
 
 @app.post("/api/listenbrainz/tracks/{mbid}/decision")
 def listenbrainz_decision(mbid: str, req: DecisionRequest):
     try:
         return listenbrainz.decide(mbid, req.decision)
+    except listenbrainz.TrackNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except listenbrainz.DecisionError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+class MoveRequest(BaseModel):
+    playlistId: str
+
+
+@app.post("/api/listenbrainz/tracks/{mbid}/move")
+def listenbrainz_move(mbid: str, req: MoveRequest):
+    try:
+        return listenbrainz.move_to_playlist(mbid, req.playlistId)
     except listenbrainz.TrackNotFound as exc:
         raise HTTPException(404, str(exc)) from exc
     except listenbrainz.DecisionError as exc:
