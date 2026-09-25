@@ -109,7 +109,7 @@ function JobCard({ job }) {
           </p>
           <p className="text-muted-foreground truncate text-xs">
             {job.artist}
-            {job.kind === 'album' && ` · ${job.tracks.length} pistes`}
+            {job.kind !== 'song' && ` · ${job.tracks.length} pistes`}
           </p>
           <div className="mt-0.5 text-xs">
             <StatusLine job={job} />

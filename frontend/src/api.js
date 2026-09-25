@@ -40,3 +40,19 @@ export const getJobs = () => request('/api/jobs')
 export const getConfig = () => request('/api/config')
 
 export const triggerScan = () => request('/api/scan', { method: 'POST' })
+
+export const getListenbrainzTracks = () => request('/api/listenbrainz/tracks')
+
+export const syncListenbrainz = () => request('/api/listenbrainz/sync', { method: 'POST' })
+
+export const decideListenbrainzTrack = (mbid, decision) =>
+  request(`/api/listenbrainz/tracks/${encodeURIComponent(mbid)}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
+
+export const retryListenbrainz = () => request('/api/listenbrainz/retry', { method: 'POST' })
+
+export const retryListenbrainzTrack = (mbid) =>
+  request(`/api/listenbrainz/tracks/${encodeURIComponent(mbid)}/retry`, { method: 'POST' })

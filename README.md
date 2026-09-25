@@ -22,7 +22,10 @@ than root).
 
 ## Manual installation
 
-Requirements: Python ≥ 3.10, Node ≥ 18, `ffmpeg` in the PATH.
+Requirements: Python ≥ 3.10, Node ≥ 18, `ffmpeg` in the PATH. yt-dlp needs a
+JavaScript runtime to solve YouTube's challenges: the `deno` pip package pulled
+by `requirements.txt` provides one, as long as the virtualenv's `bin` is in the
+PATH (activate it, or run through `.venv/bin/uvicorn` with `PATH=.venv/bin:$PATH`).
 
 ```bash
 cd backend
@@ -80,10 +83,52 @@ The backend then serves the built frontend (`frontend/dist`) directly on
 ## Navidrome scan
 
 If the `NAVIDROME_URL`, `NAVIDROME_USER` and `NAVIDROME_PASS` environment
-variables are set (see `docker-compose.yml`), a library scan is triggered
+variables are set (see `.env.example`), a library scan is triggered
 automatically through the Subsonic API (`/rest/startScan`) after each
 successful download, and a ⟳ button in the Downloads panel lets you start one
 manually. Otherwise, run a scan from Navidrome or wait for its automatic scan.
+
+## ListenBrainz Weekly Exploration
+
+Every week, ListenBrainz generates a "Weekly Exploration" playlist of tracks
+you have never listened to. yt-get can download it automatically so you can
+try the tracks in Navidrome, then decide track by track what to keep.
+
+Set these environment variables (with Docker: copy `.env.example` to `.env`):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `LISTENBRAINZ_USER` | | Your ListenBrainz user name |
+| `LISTENBRAINZ_TOKEN` | | Your user token: ListenBrainz profile page → *User token* |
+| `LISTENBRAINZ_RETENTION_DAYS` | `0` | Delete undecided tracks after this many days (`0` = never) |
+| `LISTENBRAINZ_CHECK_HOURS` | `6` | Interval between two checks for a new playlist |
+
+When both the user and the token are set:
+
+- A background task checks ListenBrainz 10 seconds after startup, then every
+  `LISTENBRAINZ_CHECK_HOURS` hours. When a new Weekly Exploration playlist
+  is available, each track is matched on YouTube Music and downloaded in the
+  best quality, as a single job visible in the Downloads panel. A track that
+  already appeared in a previous week is skipped.
+- Tracks are stored in the regular `Artist/Album/NN - Title.ext` tree. A file
+  that already existed in the library is left untouched and marked as
+  "already present".
+- The **Découverte** tab lists the playlists with their tracks. Click the
+  heart to keep a track, or the bin to delete it: the file is removed
+  immediately (no confirmation), along with its album and artist folders
+  when they become empty, and a Navidrome scan is triggered. Tracks that
+  were already present are never deleted; the bin only marks them as not
+  kept. The **Synchroniser** button forces a check.
+- Tracks in error or not found on YouTube Music show a retry button, and
+  **Relancer les échecs** retries all of them at once.
+- Undecided tracks stay until you decide, unless
+  `LISTENBRAINZ_RETENTION_DAYS` is greater than 0: undecided tracks older
+  than that are then deleted automatically.
+- An `.m3u` playlist is written to `Playlists/<title> <YYYY-MM-DD>.m3u` in
+  the music folder, so Navidrome imports it. Deleted tracks are removed from
+  it.
+- The state (processed playlists, decisions) is stored in
+  `.yt-get/listenbrainz.json` inside the music folder.
 
 ## Disclaimer
 

@@ -1,6 +1,6 @@
 fastapi>=0.115
 uvicorn[standard]>=0.32
-yt-dlp>=2025.1.1
+yt-dlp[default,deno]>=2025.11.12
 ytmusicapi>=1.8
 mutagen>=1.47
 requests>=2.32

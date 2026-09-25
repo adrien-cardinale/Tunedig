@@ -1,14 +1,16 @@
 """API yt-get : recherche YouTube Music, téléchargement et tagging pour Navidrome."""
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from ytmusicapi import YTMusic
 
+import listenbrainz
 import navidrome
+from catalog import artists_str, build_song_meta, song_from_search, ytmusic
 from downloader import (
     MUSIC_DIR,
     QUALITIES,
@@ -18,20 +20,20 @@ from downloader import (
     start_job,
 )
 
-app = FastAPI(title="yt-get")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    listenbrainz.start_background()
+    yield
+
+
+app = FastAPI(title="yt-get", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-ytmusic = YTMusic()
-
-
-def _artists_str(artists: list[dict] | None) -> str:
-    return ", ".join(a["name"] for a in (artists or []) if a.get("name")) or "Inconnu"
-
 
 @app.get("/api/search")
 def search(q: str, type: str = "songs"):
@@ -43,22 +45,14 @@ def search(q: str, type: str = "songs"):
         if type == "songs":
             if not r.get("videoId"):
                 continue
-            out.append({
-                "videoId": r["videoId"],
-                "title": r.get("title", ""),
-                "artist": _artists_str(r.get("artists")),
-                "album": (r.get("album") or {}).get("name"),
-                "albumId": (r.get("album") or {}).get("id"),
-                "duration": r.get("duration"),
-                "thumbnail": best_thumbnail(r.get("thumbnails")),
-            })
+            out.append(song_from_search(r))
         else:
             if not r.get("browseId"):
                 continue
             out.append({
                 "browseId": r["browseId"],
                 "title": r.get("title", ""),
-                "artist": _artists_str(r.get("artists")),
+                "artist": artists_str(r.get("artists")),
                 "year": r.get("year"),
                 "type": r.get("type"),
                 "thumbnail": best_thumbnail(r.get("thumbnails")),
@@ -75,14 +69,14 @@ def album(browse_id: str):
     return {
         "browseId": browse_id,
         "title": a.get("title", ""),
-        "artist": _artists_str(a.get("artists")),
+        "artist": artists_str(a.get("artists")),
         "year": a.get("year"),
         "thumbnail": best_thumbnail(a.get("thumbnails")),
         "tracks": [
             {
                 "videoId": t.get("videoId"),
                 "title": t.get("title", ""),
-                "artist": _artists_str(t.get("artists")) if t.get("artists") else None,
+                "artist": artists_str(t.get("artists")) if t.get("artists") else None,
                 "duration": t.get("duration"),
                 "track": t.get("trackNumber") or i + 1,
             }
@@ -123,33 +117,9 @@ def _check_quality(quality: str) -> None:
 @app.post("/api/download/song")
 def download_song(req: SongRequest):
     _check_quality(req.quality)
-    meta = {
-        "title": req.title,
-        "artist": req.artist,
-        "album_artist": req.artist,
-        "album": req.album,
-        "year": None,
-        "track": None,
-        "track_total": None,
-    }
-    cover_url = req.thumbnail
-    # Si le titre appartient à un album connu, on récupère année, numéro de
-    # piste et pochette haute qualité pour un tagging complet.
-    if req.albumId:
-        try:
-            a = ytmusic.get_album(req.albumId)
-            meta["album"] = a.get("title") or meta["album"]
-            meta["album_artist"] = _artists_str(a.get("artists"))
-            meta["year"] = a.get("year")
-            cover_url = best_thumbnail(a.get("thumbnails")) or cover_url
-            album_tracks = a.get("tracks", [])
-            meta["track_total"] = len(album_tracks) or None
-            for i, t in enumerate(album_tracks):
-                if t.get("videoId") == req.videoId:
-                    meta["track"] = t.get("trackNumber") or i + 1
-                    break
-        except Exception:  # noqa: BLE001 — tagging minimal si l'album est inaccessible
-            pass
+    meta, cover_url = build_song_meta(
+        req.videoId, req.title, req.artist, req.album, req.albumId, req.thumbnail
+    )
     tracks = [{
         "video_id": req.videoId,
         "title": req.title,
@@ -197,7 +167,11 @@ def list_jobs():
 
 @app.get("/api/config")
 def config():
-    return {"musicDir": str(MUSIC_DIR), "navidrome": navidrome.enabled()}
+    return {
+        "musicDir": str(MUSIC_DIR),
+        "navidrome": navidrome.enabled(),
+        "listenbrainz": listenbrainz.enabled(),
+    }
 
 
 @app.post("/api/scan")
@@ -207,6 +181,50 @@ def scan():
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Scan impossible : {exc}") from exc
     return {"ok": True}
+
+
+class DecisionRequest(BaseModel):
+    decision: str
+
+
+@app.get("/api/listenbrainz/tracks")
+def listenbrainz_tracks():
+    return listenbrainz.playlists_with_tracks()
+
+
+@app.post("/api/listenbrainz/sync")
+def listenbrainz_sync():
+    if not listenbrainz.enabled():
+        raise HTTPException(400, "ListenBrainz non configuré")
+    try:
+        return listenbrainz.sync_latest(background=True)
+    except listenbrainz.ListenBrainzError as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+
+@app.post("/api/listenbrainz/tracks/{mbid}/decision")
+def listenbrainz_decision(mbid: str, req: DecisionRequest):
+    try:
+        return listenbrainz.decide(mbid, req.decision)
+    except listenbrainz.TrackNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except listenbrainz.DecisionError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/listenbrainz/retry")
+def listenbrainz_retry():
+    return {"count": listenbrainz.retry_tracks()}
+
+
+@app.post("/api/listenbrainz/tracks/{mbid}/retry")
+def listenbrainz_retry_track(mbid: str):
+    try:
+        return {"count": listenbrainz.retry_tracks([mbid])}
+    except listenbrainz.TrackNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except listenbrainz.DecisionError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 # En production : sert le frontend compilé (frontend/dist)

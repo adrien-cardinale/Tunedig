@@ -1,6 +1,7 @@
 """Téléchargement yt-dlp + tagging (ID3/Vorbis/MP4) pour Navidrome."""
 
 import base64
+import logging
 import os
 import re
 import shutil
@@ -8,6 +9,7 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
+from typing import Callable
 
 import requests
 import yt_dlp
@@ -32,6 +34,8 @@ QUALITIES = {
 }
 
 AUDIO_EXTS = {".mp3", ".opus", ".ogg", ".m4a", ".aac", ".flac", ".wav"}
+
+logger = logging.getLogger(__name__)
 
 jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
@@ -192,8 +196,8 @@ def _download_audio(video_id: str, dest_dir: Path, progress_cb,
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def _finalize_track(tmp_file: Path, meta: dict, cover: bytes | None) -> Path:
-    tag_file(tmp_file, meta, cover)
+def _finalize_track(tmp_file: Path, meta: dict,
+                    cover: bytes | None) -> tuple[Path, bool]:
     artist_dir = MUSIC_DIR / sanitize(meta.get("album_artist") or meta["artist"])
     album_dir = artist_dir / sanitize(meta.get("album") or meta["title"])
     album_dir.mkdir(parents=True, exist_ok=True)
@@ -203,15 +207,19 @@ def _finalize_track(tmp_file: Path, meta: dict, cover: bytes | None) -> Path:
     else:
         filename = f"{sanitize(meta['title'])}{ext}"
     final = album_dir / filename
+    if final.exists():
+        tmp_file.unlink(missing_ok=True)
+        return final, True
+    tag_file(tmp_file, meta, cover)
     shutil.move(str(tmp_file), final)
-    return final
+    return final, False
 
 
 def create_job(kind: str, title: str, artist: str, thumbnail: str | None,
                tracks: list[dict], quality: str) -> dict:
     job = {
         "id": uuid.uuid4().hex[:12],
-        "kind": kind,  # "song" | "album"
+        "kind": kind,  # "song" | "album" | "playlist"
         "title": title,
         "artist": artist,
         "thumbnail": thumbnail,
@@ -229,10 +237,37 @@ def create_job(kind: str, title: str, artist: str, thumbnail: str | None,
     return job
 
 
-def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str) -> None:
-    """Exécuté dans un thread. tracks: [{video_id, title, meta{...}, format_id?}]."""
+def _track_cover(track: dict, job_cover: bytes | None,
+                 cache: dict[str, bytes | None]) -> bytes | None:
+    url = track.get("cover_url")
+    if not url:
+        return job_cover
+    if url not in cache:
+        cache[url] = fetch_cover(url)
+    return cache[url] or job_cover
+
+
+def _finish_job(job: dict, errors: list[str]) -> None:
+    if errors and all(t["status"] == "error" for t in job["tracks"]):
+        job["status"] = "error"
+        job["error"] = "; ".join(errors)
+        return
+    job["status"] = "done"
+    job["error"] = "; ".join(errors) or None
+    if navidrome.enabled():
+        try:
+            navidrome.trigger_scan()
+            job["scan"] = "ok"
+        except Exception as exc:  # noqa: BLE001 — le scan ne doit pas faire échouer le job
+            job["scan"] = f"échec : {exc}"
+
+
+def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
+            on_done: Callable[[dict], None] | None = None) -> None:
+    """Exécuté dans un thread. tracks: [{video_id, title, meta{...}, format_id?, cover_url?}]."""
     job["status"] = "downloading"
     cover = fetch_cover(cover_url)
+    covers: dict[str, bytes | None] = {}
     errors = []
     with tempfile.TemporaryDirectory(prefix="yt-get-") as tmp:
         tmp_dir = Path(tmp)
@@ -248,32 +283,32 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str) 
                 audio = _download_audio(
                     track["video_id"], tmp_dir, cb, quality, track.get("format_id")
                 )
-                _finalize_track(audio, track["meta"], cover)
+                final, existed = _finalize_track(
+                    audio, track["meta"], _track_cover(track, cover, covers)
+                )
+                jt["path"] = str(final)
+                jt["existed"] = existed
                 jt["status"] = "done"
                 jt["progress"] = 1.0
             except Exception as exc:  # noqa: BLE001 — un échec de piste ne stoppe pas l'album
                 jt["status"] = "error"
+                jt["error"] = str(exc)
                 errors.append(f"{track['title']}: {exc}")
             job["progress"] = (i + 1) / len(tracks)
 
-    if errors and all(t["status"] == "error" for t in job["tracks"]):
-        job["status"] = "error"
-        job["error"] = "; ".join(errors)
-    else:
-        job["status"] = "done"
-        job["error"] = "; ".join(errors) or None
-        if navidrome.enabled():
-            try:
-                navidrome.trigger_scan()
-                job["scan"] = "ok"
-            except Exception as exc:  # noqa: BLE001 — le scan ne doit pas faire échouer le job
-                job["scan"] = f"échec : {exc}"
+    _finish_job(job, errors)
+    if on_done is not None:
+        try:
+            on_done(job)
+        except Exception:  # noqa: BLE001 — un callback défaillant ne doit pas tuer le thread
+            logger.exception("Callback de fin du job %s en échec", job["id"])
 
 
 def start_job(kind: str, title: str, artist: str, thumbnail: str | None,
-              tracks: list[dict], cover_url: str | None, quality: str = "best") -> dict:
+              tracks: list[dict], cover_url: str | None, quality: str = "best",
+              on_done: Callable[[dict], None] | None = None) -> dict:
     job = create_job(kind, title, artist, thumbnail, tracks, quality)
     threading.Thread(
-        target=run_job, args=(job, tracks, cover_url, quality), daemon=True
+        target=run_job, args=(job, tracks, cover_url, quality, on_done), daemon=True
     ).start()
     return job

@@ -7,12 +7,10 @@ services:
     volumes:
       # À pointer vers la bibliothèque musicale scannée par Navidrome
       - ./music:/music
-    # Décommenter pour déclencher automatiquement un scan Navidrome
-    # après chaque téléchargement (utilisateur Subsonic/Navidrome) :
-    # environment:
-    #   NAVIDROME_URL: "http://navidrome:4533"
-    #   NAVIDROME_USER: "admin"
-    #   NAVIDROME_PASS: "motdepasse"
+    # Configuration Navidrome et ListenBrainz : copier .env.example en .env
+    env_file:
+      - path: .env
+        required: false
     # Décommenter pour que les fichiers appartiennent à votre utilisateur
     # plutôt qu'à root (utile si Navidrome tourne avec ce même UID) :
     # user: "1000:1000"

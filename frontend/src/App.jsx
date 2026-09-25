@@ -8,6 +8,7 @@ import AlbumView from './components/AlbumView.jsx'
 import Downloads from './components/Downloads.jsx'
 import Results from './components/Results.jsx'
 import SongView from './components/SongView.jsx'
+import Weekly from './components/Weekly.jsx'
 
 function ThemeToggle() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
@@ -35,7 +36,9 @@ export default function App() {
   const [jobs, setJobs] = useState([])
   const [musicDir, setMusicDir] = useState('')
   const [navidrome, setNavidrome] = useState(false)
+  const [listenbrainz, setListenbrainz] = useState(false)
   const lastSearch = useRef('')
+  const lastSearchType = useRef(null)
 
   useEffect(() => {
     api
@@ -43,6 +46,7 @@ export default function App() {
       .then((c) => {
         setMusicDir(c.musicDir)
         setNavidrome(c.navidrome)
+        setListenbrainz(c.listenbrainz)
       })
       .catch(() => {})
   }, [])
@@ -60,6 +64,7 @@ export default function App() {
   const runSearch = useCallback(async (q, t) => {
     if (!q.trim()) return
     lastSearch.current = q
+    lastSearchType.current = t
     setLoading(true)
     setError(null)
     try {
@@ -74,12 +79,16 @@ export default function App() {
 
   const onSubmit = (e) => {
     e.preventDefault()
-    runSearch(query, type)
+    const searchType = type === 'weekly' ? 'songs' : type
+    setType(searchType)
+    runSearch(query, searchType)
   }
 
   const switchType = (t) => {
     setType(t)
-    if (lastSearch.current) runSearch(lastSearch.current, t)
+    if (t !== 'weekly' && lastSearch.current && t !== lastSearchType.current) {
+      runSearch(lastSearch.current, t)
+    }
   }
 
   const startSong = async (song, quality) => {
@@ -156,6 +165,11 @@ export default function App() {
               <TabsTrigger value="albums" className="flex-1 px-6">
                 Albums
               </TabsTrigger>
+              {listenbrainz && (
+                <TabsTrigger value="weekly" className="flex-1 px-6">
+                  Découverte
+                </TabsTrigger>
+              )}
             </TabsList>
           </Tabs>
 
@@ -169,13 +183,17 @@ export default function App() {
             </div>
           )}
 
-          <Results
-            results={results}
-            type={type}
-            loading={loading}
-            onOpenSong={setOpenSong}
-            onOpenAlbum={setOpenAlbum}
-          />
+          {type === 'weekly' ? (
+            <Weekly jobs={jobs} />
+          ) : (
+            <Results
+              results={results}
+              type={type}
+              loading={loading}
+              onOpenSong={setOpenSong}
+              onOpenAlbum={setOpenAlbum}
+            />
+          )}
         </div>
       </main>
 
