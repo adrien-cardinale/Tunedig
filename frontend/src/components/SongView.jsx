@@ -8,10 +8,10 @@ import {
 } from '@/components/ui/dialog'
 import DownloadMenu from './DownloadMenu.jsx'
 
-export default function SongView({ song, onClose, onDownloadSong }) {
+export default function SongView({ song, navidrome, onClose, onDownloadSong }) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-stretch">
           {song.thumbnail ? (
             <img
@@ -24,7 +24,7 @@ export default function SongView({ song, onClose, onDownloadSong }) {
               <MusicIcon className="size-10" />
             </div>
           )}
-          <DialogHeader className="w-full min-w-0 justify-center gap-3 sm:w-auto">
+          <DialogHeader className="w-full min-w-0 justify-center gap-3 sm:flex-1">
             <DialogTitle className="leading-snug">{song.title}</DialogTitle>
             <DialogDescription>
               {song.artist}
@@ -33,8 +33,9 @@ export default function SongView({ song, onClose, onDownloadSong }) {
             </DialogDescription>
             <DownloadMenu
               className="w-full sm:w-auto"
-              onDownload={(quality) => {
-                onDownloadSong(song, quality)
+              navidrome={navidrome}
+              onDownload={(quality, playlistId) => {
+                onDownloadSong(song, quality, playlistId)
                 onClose()
               }}
             />

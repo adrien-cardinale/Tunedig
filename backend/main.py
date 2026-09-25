@@ -102,11 +102,17 @@ class SongRequest(BaseModel):
     thumbnail: str | None = None
     quality: str = "best"
     formatId: str | None = None
+    playlistId: str | None = None
 
 
 class AlbumRequest(BaseModel):
     browseId: str
     quality: str = "best"
+    playlistId: str | None = None
+
+
+class PlaylistCreateRequest(BaseModel):
+    name: str
 
 
 def _check_quality(quality: str) -> None:
@@ -127,7 +133,8 @@ def download_song(req: SongRequest):
         "format_id": req.formatId,
     }]
     return start_job(
-        "song", req.title, req.artist, req.thumbnail, tracks, cover_url, req.quality
+        "song", req.title, req.artist, req.thumbnail, tracks, cover_url, req.quality,
+        playlist_id=req.playlistId,
     )
 
 
@@ -156,7 +163,7 @@ def download_album(req: AlbumRequest):
     ]
     return start_job(
         "album", a["title"], a["artist"], a["thumbnail"], tracks,
-        a["thumbnail"], req.quality,
+        a["thumbnail"], req.quality, playlist_id=req.playlistId,
     )
 
 
@@ -181,6 +188,32 @@ def scan():
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Scan impossible : {exc}") from exc
     return {"ok": True}
+
+
+def _require_navidrome() -> None:
+    if not navidrome.enabled():
+        raise HTTPException(400, "Navidrome non configuré")
+
+
+@app.get("/api/navidrome/playlists")
+def navidrome_playlists():
+    _require_navidrome()
+    try:
+        return navidrome.list_playlists()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"Playlists indisponibles : {exc}") from exc
+
+
+@app.post("/api/navidrome/playlists")
+def navidrome_create_playlist(req: PlaylistCreateRequest):
+    _require_navidrome()
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(400, "Nom de playlist vide")
+    try:
+        return navidrome.create_playlist(name)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"Création de la playlist impossible : {exc}") from exc
 
 
 class DecisionRequest(BaseModel):

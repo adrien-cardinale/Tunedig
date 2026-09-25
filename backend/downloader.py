@@ -216,7 +216,8 @@ def _finalize_track(tmp_file: Path, meta: dict,
 
 
 def create_job(kind: str, title: str, artist: str, thumbnail: str | None,
-               tracks: list[dict], quality: str) -> dict:
+               tracks: list[dict], quality: str,
+               playlist_id: str | None = None) -> dict:
     job = {
         "id": uuid.uuid4().hex[:12],
         "kind": kind,  # "song" | "album" | "playlist"
@@ -228,6 +229,8 @@ def create_job(kind: str, title: str, artist: str, thumbnail: str | None,
         "progress": 0.0,
         "error": None,
         "scan": None,  # "ok" | "échec : …" une fois le scan Navidrome tenté
+        "playlistId": playlist_id,
+        "playlist": None,
         "tracks": [
             {"title": t["title"], "status": "queued", "progress": 0.0} for t in tracks
         ],
@@ -262,8 +265,39 @@ def _finish_job(job: dict, errors: list[str]) -> None:
             job["scan"] = f"échec : {exc}"
 
 
+def _playlist_song_ids(job: dict, tracks: list[dict]) -> tuple[list[str], int]:
+    song_ids = []
+    done = [
+        (jt, track) for jt, track in zip(job["tracks"], tracks)
+        if jt["status"] == "done" and jt.get("path")
+    ]
+    for jt, track in done:
+        relative = Path(jt["path"]).relative_to(MUSIC_DIR).as_posix()
+        meta = track["meta"]
+        song_id = navidrome.find_song_id(relative, meta["title"], meta["artist"])
+        if song_id:
+            song_ids.append(song_id)
+    return song_ids, len(done)
+
+
+def _add_to_playlist(job: dict, tracks: list[dict], playlist_id: str) -> None:
+    if not navidrome.enabled():
+        job["playlist"] = "échec : Navidrome non configuré"
+        return
+    try:
+        navidrome.wait_for_scan()
+        song_ids, expected = _playlist_song_ids(job, tracks)
+        if song_ids:
+            navidrome.add_to_playlist(playlist_id, song_ids)
+        found = len(song_ids)
+        job["playlist"] = "ok" if found == expected else f"partiel : {found}/{expected}"
+    except Exception as exc:  # noqa: BLE001 — l'ajout en playlist ne doit pas faire échouer le job
+        job["playlist"] = f"échec : {exc}"
+
+
 def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
-            on_done: Callable[[dict], None] | None = None) -> None:
+            on_done: Callable[[dict], None] | None = None,
+            playlist_id: str | None = None) -> None:
     """Exécuté dans un thread. tracks: [{video_id, title, meta{...}, format_id?, cover_url?}]."""
     job["status"] = "downloading"
     cover = fetch_cover(cover_url)
@@ -297,6 +331,8 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
             job["progress"] = (i + 1) / len(tracks)
 
     _finish_job(job, errors)
+    if playlist_id and job["status"] != "error":
+        _add_to_playlist(job, tracks, playlist_id)
     if on_done is not None:
         try:
             on_done(job)
@@ -306,9 +342,12 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
 
 def start_job(kind: str, title: str, artist: str, thumbnail: str | None,
               tracks: list[dict], cover_url: str | None, quality: str = "best",
-              on_done: Callable[[dict], None] | None = None) -> dict:
-    job = create_job(kind, title, artist, thumbnail, tracks, quality)
+              on_done: Callable[[dict], None] | None = None,
+              playlist_id: str | None = None) -> dict:
+    job = create_job(kind, title, artist, thumbnail, tracks, quality, playlist_id)
     threading.Thread(
-        target=run_job, args=(job, tracks, cover_url, quality, on_done), daemon=True
+        target=run_job,
+        args=(job, tracks, cover_url, quality, on_done, playlist_id),
+        daemon=True,
     ).start()
     return job

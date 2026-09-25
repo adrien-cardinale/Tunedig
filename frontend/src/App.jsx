@@ -91,17 +91,17 @@ export default function App() {
     }
   }
 
-  const startSong = async (song, quality) => {
+  const startSong = async (song, quality, playlistId) => {
     try {
-      await api.downloadSong({ ...song, quality })
+      await api.downloadSong({ ...song, quality, playlistId })
     } catch (e) {
       setError(`Téléchargement impossible : ${e.message}`)
     }
   }
 
-  const startAlbum = async (album, quality) => {
+  const startAlbum = async (album, quality, playlistId) => {
     try {
-      await api.downloadAlbum(album.browseId, quality)
+      await api.downloadAlbum(album.browseId, quality, playlistId)
     } catch (e) {
       setError(`Téléchargement impossible : ${e.message}`)
     }
@@ -200,12 +200,18 @@ export default function App() {
       <Downloads jobs={jobs} navidrome={navidrome} />
 
       {openSong && (
-        <SongView song={openSong} onClose={() => setOpenSong(null)} onDownloadSong={startSong} />
+        <SongView
+          song={openSong}
+          navidrome={navidrome}
+          onClose={() => setOpenSong(null)}
+          onDownloadSong={startSong}
+        />
       )}
 
       {openAlbum && (
         <AlbumView
           browseId={openAlbum}
+          navidrome={navidrome}
           onClose={() => setOpenAlbum(null)}
           onDownloadAlbum={startAlbum}
           onDownloadSong={startSong}

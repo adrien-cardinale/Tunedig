@@ -11,7 +11,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import DownloadMenu from './DownloadMenu.jsx'
 
-export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownloadSong }) {
+export default function AlbumView({ browseId, navidrome, onClose, onDownloadAlbum, onDownloadSong }) {
   const [album, setAlbum] = useState(null)
   const [error, setError] = useState(null)
 
@@ -55,7 +55,7 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
                   <MusicIcon className="size-10" />
                 </div>
               )}
-              <DialogHeader className="w-full min-w-0 justify-center gap-3 sm:w-auto">
+              <DialogHeader className="w-full min-w-0 justify-center gap-3 sm:flex-1">
                 <DialogTitle className="leading-snug">{album.title}</DialogTitle>
                 <DialogDescription>
                   {album.artist}
@@ -65,8 +65,9 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
                 <DownloadMenu
                   className="w-full sm:w-auto"
                   label="Télécharger l'album"
-                  onDownload={(quality) => {
-                    onDownloadAlbum(album, quality)
+                  navidrome={navidrome}
+                  onDownload={(quality, playlistId) => {
+                    onDownloadAlbum(album, quality, playlistId)
                     onClose()
                   }}
                 />
@@ -91,7 +92,8 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
                   {t.videoId && (
                     <DownloadMenu
                       compact
-                      onDownload={(quality) =>
+                      navidrome={navidrome}
+                      onDownload={(quality, playlistId) =>
                         onDownloadSong(
                           {
                             videoId: t.videoId,
@@ -102,6 +104,7 @@ export default function AlbumView({ browseId, onClose, onDownloadAlbum, onDownlo
                             thumbnail: album.thumbnail,
                           },
                           quality,
+                          playlistId,
                         )
                       }
                     />

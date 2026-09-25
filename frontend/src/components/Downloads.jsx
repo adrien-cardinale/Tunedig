@@ -29,6 +29,8 @@ function StatusLine({ job }) {
       <span className="text-success flex items-center gap-1">
         <CheckCircle2Icon className="size-3.5" /> Terminé · {quality}
         {job.scan === 'ok' && ' · scan lancé'}
+        {job.playlistId && job.playlist === null && ' · ajout à la playlist…'}
+        {job.playlistId && job.playlist === 'ok' && ' · playlist : ok'}
       </span>
     )
   }
@@ -120,6 +122,16 @@ function JobCard({ job }) {
       {job.error && <p className="text-destructive text-xs break-words">{job.error}</p>}
       {job.scan && job.scan !== 'ok' && (
         <p className="text-destructive text-xs break-words">Scan Navidrome : {job.scan}</p>
+      )}
+      {job.playlistId && job.playlist && job.playlist !== 'ok' && (
+        <p
+          className={cn(
+            'text-xs break-words',
+            job.playlist.startsWith('partiel') ? 'text-muted-foreground' : 'text-destructive',
+          )}
+        >
+          Playlist : {job.playlist.replace(/^partiel : /, 'partiel ')}
+        </p>
       )}
     </div>
   )

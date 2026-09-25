@@ -25,11 +25,20 @@ export const downloadSong = (song) =>
     body: JSON.stringify(song),
   })
 
-export const downloadAlbum = (browseId, quality) =>
+export const downloadAlbum = (browseId, quality, playlistId) =>
   request('/api/download/album', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ browseId, quality }),
+    body: JSON.stringify({ browseId, quality, playlistId }),
+  })
+
+export const getPlaylists = () => request('/api/navidrome/playlists')
+
+export const createPlaylist = (name) =>
+  request('/api/navidrome/playlists', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
   })
 
 export const getFormats = (videoId) =>

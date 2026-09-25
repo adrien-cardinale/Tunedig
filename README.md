@@ -88,6 +88,11 @@ automatically through the Subsonic API (`/rest/startScan`) after each
 successful download, and a ⟳ button in the Downloads panel lets you start one
 manually. Otherwise, run a scan from Navidrome or wait for its automatic scan.
 
+When Navidrome is configured, a playlist selector next to the download button
+lets you pick a Navidrome playlist, or create a new one. Downloaded tracks are
+added to it once the scan completes (album tracks in track order). The choice
+is remembered between downloads, like the quality.
+
 ## ListenBrainz Weekly Exploration
 
 Every week, ListenBrainz generates a "Weekly Exploration" playlist of tracks
