@@ -34,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { reloadPlaylists, usePlaylists } from './DownloadMenu.jsx'
 import Player from './Player.jsx'
+import SelectionBar from './SelectionBar.jsx'
 
 const STATUS = {
   pending: { label: 'En cours', variant: 'secondary' },
@@ -81,6 +82,23 @@ function countDecisions(playlists) {
 
 function hasPendingTracks(playlists) {
   return (playlists || []).some((p) => p.tracks.some((t) => t.status === 'pending'))
+}
+
+function decidableTracks(playlists) {
+  return (playlists || []).flatMap((p) => p.tracks).filter((t) => DECIDABLE.includes(t.status))
+}
+
+function pluralize(count, word) {
+  return count > 1 ? `${word}s` : word
+}
+
+function countLabel(count, ...words) {
+  return `${count} ${words.map((word) => pluralize(count, word)).join(' ')}`
+}
+
+function moveDescription(tracks, navidromePlaylist) {
+  if (tracks.length === 1) return `« ${tracks[0].title} » quittera ${navidromePlaylist}.`
+  return `${tracks.length} pistes quitteront ${navidromePlaylist}.`
 }
 
 function retryMessage(count) {
@@ -168,9 +186,34 @@ function RetryButton({ track, busy, onRetry }) {
   )
 }
 
-function TrackRow({ track, busy, current, playing, onDecide, onRetry, onMove, onPlay }) {
+function SelectCheckbox({ track, checked, busy, onToggleSelect }) {
+  return (
+    <input
+      type="checkbox"
+      className="accent-primary size-4 shrink-0 cursor-pointer"
+      aria-label={`Sélectionner « ${track.title} »`}
+      checked={checked}
+      disabled={busy}
+      onChange={() => onToggleSelect(track.mbid)}
+    />
+  )
+}
+
+function TrackRow({
+  track,
+  busy,
+  current,
+  playing,
+  checked,
+  onDecide,
+  onRetry,
+  onMove,
+  onPlay,
+  onToggleSelect,
+}) {
   const status = STATUS[track.status] || { label: track.status, variant: 'outline' }
   const deleted = track.status === 'deleted'
+  const decidable = DECIDABLE.includes(track.status)
   return (
     <div
       className={cn(
@@ -179,6 +222,17 @@ function TrackRow({ track, busy, current, playing, onDecide, onRetry, onMove, on
         current && 'ring-primary/40 ring-1',
       )}
     >
+      {onToggleSelect &&
+        (decidable ? (
+          <SelectCheckbox
+            track={track}
+            checked={checked}
+            busy={busy}
+            onToggleSelect={onToggleSelect}
+          />
+        ) : (
+          <span className="size-4 shrink-0" />
+        ))}
       {track.thumbnail ? (
         <img
           className="size-12 shrink-0 rounded-md object-cover"
@@ -217,7 +271,7 @@ function TrackRow({ track, busy, current, playing, onDecide, onRetry, onMove, on
       {isPlayable(track) && (
         <PlayButton track={track} active={current && playing} onPlay={onPlay} />
       )}
-      {DECIDABLE.includes(track.status) && (
+      {decidable && (
         <DecisionButtons track={track} busy={busy} onDecide={onDecide} onMove={onMove} />
       )}
       {RETRYABLE.includes(track.status) && (
@@ -230,12 +284,15 @@ function TrackRow({ track, busy, current, playing, onDecide, onRetry, onMove, on
 function TrackList({
   tracks,
   busyId,
+  batchBusy,
   currentMbid,
   playing,
+  selected,
   onDecide,
   onRetry,
   onMove,
   onPlay,
+  onToggleSelect,
   processing = false,
 }) {
   if (tracks.length === 0) {
@@ -251,20 +308,22 @@ function TrackList({
         <TrackRow
           key={t.mbid}
           track={t}
-          busy={busyId === t.mbid}
+          busy={busyId === t.mbid || batchBusy}
           current={currentMbid === t.mbid}
           playing={playing}
+          checked={selected.has(t.mbid)}
           onDecide={onDecide}
           onRetry={onRetry}
           onMove={onMove}
           onPlay={onPlay}
+          onToggleSelect={onToggleSelect}
         />
       ))}
     </div>
   )
 }
 
-function OlderPlaylist({ playlist, busyId, currentMbid, playing, onDecide, onRetry, onMove, onPlay }) {
+function OlderPlaylist({ playlist, ...listProps }) {
   const [open, setOpen] = useState(false)
   return (
     <section className="border-t pt-4">
@@ -286,16 +345,7 @@ function OlderPlaylist({ playlist, busyId, currentMbid, playing, onDecide, onRet
       </button>
       {open && (
         <div className="mt-3">
-          <TrackList
-            tracks={playlist.tracks}
-            busyId={busyId}
-            currentMbid={currentMbid}
-            playing={playing}
-            onDecide={onDecide}
-            onRetry={onRetry}
-            onMove={onMove}
-            onPlay={onPlay}
-          />
+          <TrackList tracks={playlist.tracks} {...listProps} />
         </div>
       )}
     </section>
@@ -346,8 +396,9 @@ function NewPlaylistField({ onCreated }) {
   )
 }
 
-function MoveDialog({ track, navidromePlaylist, initialPlaylistId, onClose, onMoved }) {
+function MoveDialog({ tracks, navidromePlaylist, initialPlaylistId, onClose, onMoved, onDone }) {
   const playlists = usePlaylists(true)
+  const [remaining, setRemaining] = useState(tracks)
   const [playlistId, setPlaylistId] = useState(initialPlaylistId)
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -370,13 +421,18 @@ function MoveDialog({ track, navidromePlaylist, initialPlaylistId, onClose, onMo
   const move = async () => {
     setBusy(true)
     setError(null)
-    try {
-      const updated = await api.moveListenbrainzTrack(track.mbid, selectedId)
-      onMoved(updated, selectedId)
-    } catch (e) {
-      setError(e.message)
-      setBusy(false)
+    for (const [index, track] of remaining.entries()) {
+      try {
+        const updated = await api.moveListenbrainzTrack(track.mbid, selectedId)
+        onMoved(updated, selectedId)
+      } catch (e) {
+        setRemaining(remaining.slice(index))
+        setError(e.message)
+        setBusy(false)
+        return
+      }
     }
+    onDone()
   }
 
   const changeOpen = (open) => {
@@ -389,7 +445,7 @@ function MoveDialog({ track, navidromePlaylist, initialPlaylistId, onClose, onMo
         <DialogHeader>
           <DialogTitle>Déplacer vers une playlist</DialogTitle>
           <DialogDescription>
-            « {track.title} » quittera {navidromePlaylist}.
+            {moveDescription(remaining, navidromePlaylist)}
           </DialogDescription>
         </DialogHeader>
         <Select value={creating ? NEW_PLAYLIST : selectedId} onValueChange={changePlaylist}>
@@ -479,7 +535,9 @@ export default function Weekly({ jobs, navidromePlaylist }) {
   const [awaitedPlaylist, setAwaitedPlaylist] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [retrying, setRetrying] = useState(false)
-  const [movingTrack, setMovingTrack] = useState(null)
+  const [batchBusy, setBatchBusy] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [movingTracks, setMovingTracks] = useState(null)
   const [lastMoveTargetId, setLastMoveTargetId] = useState('')
   const [current, setCurrent] = useState(null)
   const [playing, setPlaying] = useState(false)
@@ -488,6 +546,9 @@ export default function Weekly({ jobs, navidromePlaylist }) {
     (j) => j.kind === 'playlist' && (j.status === 'queued' || j.status === 'downloading'),
   )
   const tracksPending = hasPendingTracks(playlists)
+  const selectable = decidableTracks(playlists)
+  const selectedTracks = selectable.filter((t) => selected.has(t.mbid))
+  const allSelected = selectable.length > 0 && selectedTracks.length === selectable.length
 
   const refresh = useCallback(async () => {
     try {
@@ -557,22 +618,63 @@ export default function Weekly({ jobs, navidromePlaylist }) {
     else setPlaying(false)
   }
 
-  const trackMoved = (updated, playlistId) => {
+  const applyUpdate = (updated) => {
     replaceTrack(updated)
     closePlayerIfRemoved(updated)
-    setLastMoveTargetId(playlistId)
-    setMovingTrack(null)
   }
 
-  const openMove = navidromePlaylist ? setMovingTrack : null
+  const toggleSelected = (mbid) =>
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(mbid)) next.delete(mbid)
+      else next.add(mbid)
+      return next
+    })
+
+  const clearSelection = () => setSelected(new Set())
+
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(selectable.map((t) => t.mbid)))
+
+  const trackMoved = (updated, playlistId) => {
+    applyUpdate(updated)
+    setLastMoveTargetId(playlistId)
+  }
+
+  const moveDone = () => {
+    setMovingTracks(null)
+    clearSelection()
+  }
+
+  const openMove = navidromePlaylist ? (track) => setMovingTracks([track]) : null
+  const openBatchMove = navidromePlaylist ? () => setMovingTracks(selectedTracks) : null
+
+  const discardSelected = async () => {
+    setBatchBusy(true)
+    setError(null)
+    setMessage(null)
+    const failures = []
+    for (const track of selectedTracks) {
+      try {
+        applyUpdate(await api.decideListenbrainzTrack(track.mbid, 'discard'))
+      } catch (e) {
+        failures.push(e.message)
+      }
+    }
+    const discarded = selectedTracks.length - failures.length
+    if (discarded > 0) setMessage(`${countLabel(discarded, 'piste', 'supprimée')}.`)
+    if (failures.length > 0) {
+      setError(`Suppression impossible pour ${countLabel(failures.length, 'piste')} : ${failures[0]}`)
+    }
+    clearSelection()
+    setBatchBusy(false)
+  }
 
   const decide = async (track, decision) => {
     setBusyId(track.mbid)
     setError(null)
     try {
-      const updated = await api.decideListenbrainzTrack(track.mbid, decision)
-      replaceTrack(updated)
-      closePlayerIfRemoved(updated)
+      applyUpdate(await api.decideListenbrainzTrack(track.mbid, decision))
     } catch (e) {
       setError(`Action impossible : ${e.message}`)
     } finally {
@@ -619,6 +721,18 @@ export default function Weekly({ jobs, navidromePlaylist }) {
   }
 
   const [latest, ...older] = playlists || []
+  const listProps = {
+    busyId,
+    batchBusy,
+    currentMbid: current?.mbid,
+    playing,
+    selected,
+    onDecide: decide,
+    onRetry: retryTrack,
+    onMove: openMove,
+    onPlay: play,
+    onToggleSelect: toggleSelected,
+  }
 
   return (
     <div className={cn(current && 'pb-24')}>
@@ -631,6 +745,21 @@ export default function Weekly({ jobs, navidromePlaylist }) {
         retrying={retrying}
         onRetryAll={retryAll}
       />
+      {(selectedTracks.length > 0 || batchBusy) && (
+        <SelectionBar
+          label={
+            batchBusy
+              ? 'Traitement en cours…'
+              : countLabel(selectedTracks.length, 'piste', 'sélectionnée')
+          }
+          allSelected={allSelected}
+          busy={batchBusy}
+          onToggleAll={toggleAll}
+          onMove={openBatchMove}
+          onDiscard={discardSelected}
+          onClear={clearSelection}
+        />
+      )}
       {message && (
         <p
           className="bg-muted text-muted-foreground mb-4 cursor-pointer rounded-lg px-4 py-3 text-sm"
@@ -653,27 +782,11 @@ export default function Weekly({ jobs, navidromePlaylist }) {
         <div className="space-y-4">
           <TrackList
             tracks={latest.tracks}
-            busyId={busyId}
-            currentMbid={current?.mbid}
-            playing={playing}
-            onDecide={decide}
-            onRetry={retryTrack}
-            onMove={openMove}
-            onPlay={play}
             processing={!latest.processedAt}
+            {...listProps}
           />
           {older.map((p) => (
-            <OlderPlaylist
-              key={p.mbid}
-              playlist={p}
-              busyId={busyId}
-              currentMbid={current?.mbid}
-              playing={playing}
-              onDecide={decide}
-              onRetry={retryTrack}
-              onMove={openMove}
-              onPlay={play}
-            />
+            <OlderPlaylist key={p.mbid} playlist={p} {...listProps} />
           ))}
         </div>
       ) : (
@@ -681,13 +794,14 @@ export default function Weekly({ jobs, navidromePlaylist }) {
           Aucune playlist pour l’instant. Lancez une synchronisation.
         </p>
       )}
-      {movingTrack && (
+      {movingTracks && (
         <MoveDialog
-          track={movingTrack}
+          tracks={movingTracks}
           navidromePlaylist={navidromePlaylist}
           initialPlaylistId={lastMoveTargetId}
-          onClose={() => setMovingTrack(null)}
+          onClose={() => setMovingTracks(null)}
           onMoved={trackMoved}
+          onDone={moveDone}
         />
       )}
       <Player
