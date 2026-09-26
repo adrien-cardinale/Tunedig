@@ -62,11 +62,19 @@ function isPlayable(track) {
   return Boolean(track.path) && DECIDABLE.includes(track.status)
 }
 
+function isMoved(track) {
+  return Boolean(track.movedTo) && track.decision !== 'discard'
+}
+
+function visibleTracks(playlist) {
+  return playlist.tracks.filter((t) => !isMoved(t))
+}
+
 function nextPlayable(playlists, track) {
   const playlist = (playlists || []).find((p) => p.tracks.some((t) => t.mbid === track.mbid))
   if (!playlist) return null
   const index = playlist.tracks.findIndex((t) => t.mbid === track.mbid)
-  return playlist.tracks.slice(index + 1).find(isPlayable) || null
+  return playlist.tracks.slice(index + 1).find((t) => isPlayable(t) && !isMoved(t)) || null
 }
 
 function countDecisions(playlists) {
@@ -75,7 +83,7 @@ function countDecisions(playlists) {
     pending: tracks.filter((t) => DECIDABLE.includes(t.status) && !t.decision).length,
     kept: tracks.filter((t) => t.decision === 'keep').length,
     discarded: tracks.filter((t) => t.decision === 'discard').length,
-    moved: tracks.filter((t) => t.movedTo && t.decision !== 'discard').length,
+    moved: tracks.filter(isMoved).length,
     failed: tracks.filter((t) => RETRYABLE.includes(t.status)).length,
   }
 }
@@ -85,7 +93,7 @@ function hasPendingTracks(playlists) {
 }
 
 function decidableTracks(playlists) {
-  return (playlists || []).flatMap((p) => p.tracks).filter((t) => DECIDABLE.includes(t.status))
+  return (playlists || []).flatMap(visibleTracks).filter((t) => DECIDABLE.includes(t.status))
 }
 
 function pluralize(count, word) {
@@ -260,12 +268,6 @@ function TrackRow({
           <Badge variant={status.variant} title={track.error || undefined}>
             {status.label}
           </Badge>
-          {track.movedTo && (
-            <Badge variant="outline" className="min-w-0" title={`Déplacée vers ${track.movedTo.name}`}>
-              <ListPlusIcon />
-              <span className="truncate">{track.movedTo.name}</span>
-            </Badge>
-          )}
         </div>
       </div>
       {isPlayable(track) && (
@@ -325,6 +327,7 @@ function TrackList({
 
 function OlderPlaylist({ playlist, ...listProps }) {
   const [open, setOpen] = useState(false)
+  const tracks = visibleTracks(playlist)
   return (
     <section className="border-t pt-4">
       <button
@@ -336,7 +339,7 @@ function OlderPlaylist({ playlist, ...listProps }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{playlist.title}</span>
           <span className="text-muted-foreground text-xs">
-            {formatDate(playlist.date)} · {playlist.tracks.length} pistes
+            {formatDate(playlist.date)} · {tracks.length} pistes
           </span>
         </span>
         <ChevronDownIcon
@@ -345,7 +348,7 @@ function OlderPlaylist({ playlist, ...listProps }) {
       </button>
       {open && (
         <div className="mt-3">
-          <TrackList tracks={playlist.tracks} {...listProps} />
+          <TrackList tracks={tracks} {...listProps} />
         </div>
       )}
     </section>
@@ -781,7 +784,7 @@ export default function Weekly({ jobs, navidromePlaylist }) {
       {latest ? (
         <div className="space-y-4">
           <TrackList
-            tracks={latest.tracks}
+            tracks={visibleTracks(latest)}
             processing={!latest.processedAt}
             {...listProps}
           />
