@@ -2,9 +2,11 @@
 
 import hashlib
 import os
+import re
 import secrets
 import time
 import unicodedata
+from pathlib import PurePosixPath
 
 import requests
 
@@ -20,6 +22,7 @@ NAVIDROME_USER = os.environ.get("NAVIDROME_USER", "")
 NAVIDROME_PASS = os.environ.get("NAVIDROME_PASS", "")
 
 SCAN_POLL_INTERVAL = 2.0
+SEARCH_SONG_COUNT = 500
 SUBSONIC_NOT_AUTHORIZED = 50
 
 PLAYLIST_NOT_EDITABLE = (
@@ -104,25 +107,51 @@ def wait_for_scan(timeout: float = 90.0) -> None:
 
 
 def _normalize(path: str) -> str:
-    return unicodedata.normalize("NFC", path)
+    return unicodedata.normalize("NFC", path).replace("\\", "/").casefold()
+
+
+def _same_path(candidate: str, target: str) -> bool:
+    candidate, target = _normalize(candidate), _normalize(target)
+    return candidate == target or candidate.endswith("/" + target)
 
 
 def _search_song_id(query: str, relative_path: str) -> str | None:
+    if len(query.strip()) < 2:
+        return None
     data = _call(
         "search3",
-        {"query": query, "songCount": 50, "artistCount": 0, "albumCount": 0},
+        {"query": query, "songCount": SEARCH_SONG_COUNT, "artistCount": 0, "albumCount": 0},
     )
-    target = _normalize(relative_path)
     for song in data.get("searchResult3", {}).get("song", []):
-        if _normalize(song.get("path", "")) == target:
+        if _same_path(song.get("path", ""), relative_path):
             return song["id"]
     return None
 
 
+def _file_stem(relative_path: str) -> str:
+    stem = PurePosixPath(relative_path.replace("\\", "/")).stem
+    return re.sub(r"^\d+\s*-\s*", "", stem)
+
+
+def _search_queries(relative_path: str, title: str, artist: str) -> list[str]:
+    folders = PurePosixPath(relative_path.replace("\\", "/")).parent.parts
+    album = folders[-1] if folders else ""
+    album_artist = folders[-2] if len(folders) >= 2 else ""
+    stem = _file_stem(relative_path)
+    queries = [f"{title} {artist}", title, f"{stem} {album_artist}", stem, album, album_artist]
+    unique: dict[str, str] = {}
+    for query in queries:
+        query = query.strip()
+        unique.setdefault(query.casefold(), query)
+    return [q for q in unique.values() if q]
+
+
 def find_song_id(relative_path: str, title: str, artist: str) -> str | None:
-    return _search_song_id(f"{title} {artist}", relative_path) or _search_song_id(
-        title, relative_path
-    )
+    for query in _search_queries(relative_path, title, artist):
+        song_id = _search_song_id(query, relative_path)
+        if song_id:
+            return song_id
+    return None
 
 
 def _update_playlist(params: dict) -> None:
