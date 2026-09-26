@@ -93,6 +93,15 @@ lets you pick a Navidrome playlist, or create a new one. Downloaded tracks are
 added to it once the scan completes (album tracks in track order). The choice
 is remembered between downloads, like the quality.
 
+The target playlist must be editable by `NAVIDROME_USER`. Navidrome refuses
+additions to a playlist owned by another user (unless `NAVIDROME_USER` is an
+admin), to a smart playlist (`.nsp` file), and to a playlist imported from an
+`.m3u` file with **Auto-import** enabled: that playlist is rewritten from the
+file at each scan, so Navidrome blocks manual changes, even for admins. In all
+these cases the Subsonic API answers "User is not authorized for the given
+operation". To use such a playlist, open it in Navidrome, click *Edit* and
+disable *Auto-import*; the playlist then stops following the file.
+
 ## ListenBrainz Weekly Exploration
 
 Every week, ListenBrainz generates a "Weekly Exploration" playlist of tracks

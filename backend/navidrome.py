@@ -20,6 +20,18 @@ NAVIDROME_USER = os.environ.get("NAVIDROME_USER", "")
 NAVIDROME_PASS = os.environ.get("NAVIDROME_PASS", "")
 
 SCAN_POLL_INTERVAL = 2.0
+SUBSONIC_NOT_AUTHORIZED = 50
+
+PLAYLIST_NOT_EDITABLE = (
+    "playlist non modifiable : auto-import activé, smart playlist "
+    "ou playlist d'un autre utilisateur"
+)
+
+
+class NavidromeError(RuntimeError):
+    def __init__(self, message: str, code: int | None = None):
+        super().__init__(f"Navidrome : {message}")
+        self.code = code
 
 
 def enabled() -> bool:
@@ -52,8 +64,8 @@ def _call(endpoint: str, params: dict | None = None) -> dict:
     resp.raise_for_status()
     data = resp.json().get("subsonic-response", {})
     if data.get("status") != "ok":
-        message = data.get("error", {}).get("message", "réponse inattendue")
-        raise RuntimeError(f"Navidrome : {message}")
+        error = data.get("error", {})
+        raise NavidromeError(error.get("message", "réponse inattendue"), error.get("code"))
     return data
 
 
@@ -113,8 +125,17 @@ def find_song_id(relative_path: str, title: str, artist: str) -> str | None:
     )
 
 
+def _update_playlist(params: dict) -> None:
+    try:
+        _call("updatePlaylist", params)
+    except NavidromeError as exc:
+        if exc.code == SUBSONIC_NOT_AUTHORIZED:
+            raise NavidromeError(PLAYLIST_NOT_EDITABLE, exc.code) from exc
+        raise
+
+
 def add_to_playlist(playlist_id: str, song_ids: list[str]) -> None:
-    _call("updatePlaylist", {"playlistId": playlist_id, "songIdToAdd": song_ids})
+    _update_playlist({"playlistId": playlist_id, "songIdToAdd": song_ids})
 
 
 def find_playlist_by_name(name: str) -> dict | None:
@@ -134,4 +155,4 @@ def remove_from_playlist(playlist_id: str, song_ids: list[str]) -> None:
         if entry.get("id") in unwanted
     ]
     if indexes:
-        _call("updatePlaylist", {"playlistId": playlist_id, "songIndexToRemove": indexes})
+        _update_playlist({"playlistId": playlist_id, "songIndexToRemove": indexes})

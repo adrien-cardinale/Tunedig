@@ -648,6 +648,8 @@ def _add_to_target_playlist(entry: dict, playlist_id: str) -> tuple[str, str]:
         song_id = _navidrome_song_id(entry)
         name = _navidrome_playlist_name(playlist_id)
         navidrome.add_to_playlist(playlist_id, [song_id])
+    except navidrome.NavidromeError as exc:
+        raise DecisionError(str(exc)) from exc
     except (RuntimeError, requests.RequestException) as exc:
         raise DecisionError(f"Navidrome : {exc}") from exc
     return song_id, name
