@@ -1,5 +1,3 @@
-"""Téléchargement automatique des playlists ListenBrainz générées pour l'utilisateur."""
-
 import json
 import logging
 import os
@@ -257,7 +255,7 @@ def _write_m3u(state: dict, playlist_mbid: str) -> None:
         m3u.unlink(missing_ok=True)
         return
     PLAYLISTS_DIR.mkdir(parents=True, exist_ok=True)
-    # Navidrome, comme la plupart des lecteurs, résout les chemins relatifs par rapport au fichier m3u.
+    # Navidrome, like most players, resolves relative paths against the m3u file.
     lines = ["#EXTM3U", *(os.path.relpath(p, m3u.parent) for p in paths)]
     m3u.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -285,7 +283,7 @@ def _new_track_entry(playlist_mbid: str, track: dict) -> dict:
 def _safe_match(track: dict) -> dict | None:
     try:
         return match_track(track["title"], track["artist"])
-    except Exception:  # noqa: BLE001 — une recherche en échec ne bloque pas les autres pistes
+    except Exception:  # noqa: BLE001 — a failed search does not block the other tracks
         logger.exception("Recherche YouTube Music impossible pour %s", track["title"])
         return None
 
@@ -376,7 +374,7 @@ def _navidrome_playlist_id() -> str | None:
         return None
     try:
         playlist_id = _known_navidrome_playlist_id() or _find_or_create_navidrome_playlist()
-    except Exception:  # noqa: BLE001 — la playlist Navidrome ne doit pas bloquer le téléchargement
+    except Exception:  # noqa: BLE001 — the Navidrome playlist must not block the download
         logger.warning("Playlist Navidrome « %s » indisponible", LISTENBRAINZ_PLAYLIST_NAME, exc_info=True)
         return None
     with _editing_state() as state:
@@ -415,7 +413,7 @@ def process_playlist(playlist: dict) -> dict | None:
 def _process_claimed(playlist: dict) -> None:
     try:
         process_playlist(playlist)
-    except Exception:  # noqa: BLE001 — la playlist sera retentée au prochain passage
+    except Exception:  # noqa: BLE001 — the playlist will be retried on the next run
         logger.exception("Traitement de la playlist %s en échec", playlist["title"])
         if _read_state()["playlists"].get(playlist["mbid"], {}).get("processed_at") is None:
             _release_playlist(playlist["mbid"])
@@ -516,7 +514,7 @@ def _run_retry(originals: dict[str, dict]) -> None:
         for playlist_mbid, matched in _prepare_retry(originals).items():
             _start_retry(playlist_mbid, matched)
             launched.update(mbid for mbid, _ in matched)
-    except Exception:  # noqa: BLE001 — les pistes non relancées retrouvent leur statut d'origine
+    except Exception:  # noqa: BLE001 — tracks not restarted get their original status back
         logger.exception("Relance des pistes ListenBrainz en échec")
         _restore_statuses({m: e for m, e in originals.items() if m not in launched})
 
@@ -576,7 +574,7 @@ def _scan_library() -> None:
         return
     try:
         navidrome.trigger_scan()
-    except Exception:  # noqa: BLE001 — le scan est facultatif
+    except Exception:  # noqa: BLE001 — the scan is optional
         logger.warning("Scan Navidrome impossible après suppression", exc_info=True)
 
 
@@ -585,7 +583,7 @@ def _remove_from_playlist(playlist_id: str | None, song_ids: list[str]) -> None:
         return
     try:
         navidrome.remove_from_playlist(playlist_id, song_ids)
-    except Exception:  # noqa: BLE001 — le retrait de la playlist est facultatif
+    except Exception:  # noqa: BLE001 — removal from the playlist is optional
         logger.warning("Retrait de la playlist Navidrome impossible", exc_info=True)
 
 
@@ -728,7 +726,7 @@ def sync_navidrome_playlist() -> None:
         return
     try:
         navidrome.add_to_playlist(playlist_id, list(found.values()))
-    except Exception:  # noqa: BLE001 — l'ajout sera retenté au prochain passage
+    except Exception:  # noqa: BLE001 — the add will be retried on the next run
         logger.warning("Ajout a posteriori à la playlist Navidrome impossible", exc_info=True)
         return
     with _editing_state() as state:
@@ -792,7 +790,7 @@ def _run_pass() -> None:
     for step in (_sync_all_sources, fail_interrupted_tracks, apply_retention, sync_navidrome_playlist):
         try:
             step()
-        except Exception:  # noqa: BLE001 — le thread de fond ne doit jamais s'arrêter
+        except Exception:  # noqa: BLE001 — the background thread must never stop
             logger.exception("Passage ListenBrainz en échec")
 
 

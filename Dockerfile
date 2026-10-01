@@ -1,4 +1,4 @@
-# Étape 1 : build du frontend
+# Stage 1: frontend build
 FROM node:22-alpine AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
@@ -6,7 +6,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# Étape 2 : backend + frontend compilé
+# Stage 2: backend + built frontend
 FROM python:3.12-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \

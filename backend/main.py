@@ -1,5 +1,3 @@
-"""API tunedig : recherche YouTube Music, téléchargement et tagging pour Navidrome."""
-
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -290,7 +288,6 @@ def stream(path: str):
     return FileResponse(file)
 
 
-# En production : sert le frontend compilé (frontend/dist)
 _dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _dist.is_dir():
     app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")

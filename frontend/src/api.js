@@ -5,7 +5,7 @@ async function request(url, options) {
     try {
       detail = (await res.json()).detail || detail
     } catch {
-      /* réponse non-JSON */
+      /* non-JSON response */
     }
     throw new Error(detail)
   }

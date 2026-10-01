@@ -1,5 +1,3 @@
-"""Accès à Navidrome via l'API Subsonic : scan de bibliothèque et playlists."""
-
 import hashlib
 import os
 import re
@@ -73,7 +71,6 @@ def _call(endpoint: str, params: dict | None = None) -> dict:
 
 
 def trigger_scan() -> None:
-    """Lance un scan de la bibliothèque. Lève une exception en cas d'échec."""
     _call("startScan")
 
 
@@ -98,7 +95,7 @@ def create_playlist(name: str) -> dict:
 
 def wait_for_scan(timeout: float = 90.0) -> None:
     deadline = time.monotonic() + timeout
-    # startScan démarre le scan en asynchrone : sans ce délai, getScanStatus peut encore répondre « pas de scan ».
+    # startScan starts the scan asynchronously: without this delay, getScanStatus may still report "no scan".
     time.sleep(SCAN_POLL_INTERVAL)
     while _call("getScanStatus").get("scanStatus", {}).get("scanning"):
         if time.monotonic() >= deadline:

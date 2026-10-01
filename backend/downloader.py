@@ -1,5 +1,3 @@
-"""Téléchargement yt-dlp + tagging (ID3/Vorbis/MP4) pour Navidrome."""
-
 import base64
 import logging
 import os
@@ -23,8 +21,7 @@ from mutagen.oggvorbis import OggVorbis
 
 MUSIC_DIR = Path(os.environ.get("MUSIC_DIR", str(Path.home() / "music")))
 
-# Formats de sortie proposés à l'utilisateur.
-# "best" = extraction sans réencodage (Opus/M4A selon la source).
+# "best" = extract without re-encoding (Opus/M4A depending on the source).
 QUALITIES = {
     "best": {"preferredcodec": "best"},
     "mp3-320": {"preferredcodec": "mp3", "preferredquality": "320"},
@@ -50,7 +47,7 @@ def best_thumbnail(thumbnails: list[dict] | None) -> str | None:
     if not thumbnails:
         return None
     url = max(thumbnails, key=lambda t: t.get("width", 0))["url"]
-    # Les pochettes YouTube Music acceptent une taille arbitraire dans l'URL
+    # YouTube Music cover URLs accept an arbitrary size
     return re.sub(r"=w\d+-h\d+.*$", "=w600-h600-l90-rj", url)
 
 
@@ -66,7 +63,6 @@ def fetch_cover(url: str | None) -> bytes | None:
 
 
 def list_formats(video_id: str) -> list[dict]:
-    """Formats audio disponibles à la source, du meilleur au moins bon."""
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True}
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(
@@ -88,8 +84,6 @@ def list_formats(video_id: str) -> list[dict]:
     out.sort(key=lambda x: x["abr"] or 0, reverse=True)
     return out
 
-
-# ---------------------------------------------------------------- tagging
 
 def _cover_mime(cover: bytes) -> str:
     return "image/png" if cover[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
@@ -157,15 +151,11 @@ def tag_file(path: Path, meta: dict, cover: bytes | None) -> None:
         _tag_vorbis(path, meta, cover)
     elif ext == ".m4a":
         _tag_mp4(path, meta, cover)
-    # autres extensions : fichier livré sans tags plutôt que d'échouer
+    # Other extensions: deliver the file untagged rather than fail
 
-
-# ---------------------------------------------------------------- download
 
 def _download_audio(video_id: str, dest_dir: Path, progress_cb,
                     quality: str, format_id: str | None = None) -> Path:
-    """Télécharge une vidéo en audio dans dest_dir, renvoie le chemin du fichier."""
-
     def hook(d):
         if d["status"] == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate")
@@ -228,7 +218,7 @@ def create_job(kind: str, title: str, artist: str, thumbnail: str | None,
         "status": "queued",  # queued | downloading | done | error
         "progress": 0.0,
         "error": None,
-        "scan": None,  # "ok" | "échec : …" une fois le scan Navidrome tenté
+        "scan": None,  # "ok" | "échec : …" once the Navidrome scan has been attempted
         "playlistId": playlist_id,
         "playlist": None,
         "tracks": [
@@ -261,7 +251,7 @@ def _finish_job(job: dict, errors: list[str]) -> None:
         try:
             navidrome.trigger_scan()
             job["scan"] = "ok"
-        except Exception as exc:  # noqa: BLE001 — le scan ne doit pas faire échouer le job
+        except Exception as exc:  # noqa: BLE001 — the scan must not fail the job
             job["scan"] = f"échec : {exc}"
 
 
@@ -292,14 +282,14 @@ def _add_to_playlist(job: dict, tracks: list[dict], playlist_id: str) -> None:
             navidrome.add_to_playlist(playlist_id, song_ids)
         found = len(song_ids)
         job["playlist"] = "ok" if found == expected else f"partiel : {found}/{expected}"
-    except Exception as exc:  # noqa: BLE001 — l'ajout en playlist ne doit pas faire échouer le job
+    except Exception as exc:  # noqa: BLE001 — adding to the playlist must not fail the job
         job["playlist"] = f"échec : {exc}"
 
 
 def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
             on_done: Callable[[dict], None] | None = None,
             playlist_id: str | None = None) -> None:
-    """Exécuté dans un thread. tracks: [{video_id, title, meta{...}, format_id?, cover_url?}]."""
+    """Runs in a thread. tracks: [{video_id, title, meta{...}, format_id?, cover_url?}]."""
     job["status"] = "downloading"
     cover = fetch_cover(cover_url)
     covers: dict[str, bytes | None] = {}
@@ -325,7 +315,7 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
                 jt["existed"] = existed
                 jt["status"] = "done"
                 jt["progress"] = 1.0
-            except Exception as exc:  # noqa: BLE001 — un échec de piste ne stoppe pas l'album
+            except Exception as exc:  # noqa: BLE001 — a failed track does not stop the album
                 jt["status"] = "error"
                 jt["error"] = str(exc)
                 errors.append(f"{track['title']}: {exc}")
@@ -337,7 +327,7 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
     if on_done is not None:
         try:
             on_done(job)
-        except Exception:  # noqa: BLE001 — un callback défaillant ne doit pas tuer le thread
+        except Exception:  # noqa: BLE001 — a failing callback must not kill the thread
             logger.exception("Callback de fin du job %s en échec", job["id"])
 
 

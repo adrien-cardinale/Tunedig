@@ -1,5 +1,3 @@
-"""Accès partagé à YouTube Music : client, mise en forme des résultats, métadonnées."""
-
 from ytmusicapi import YTMusic
 
 from downloader import best_thumbnail
@@ -54,6 +52,6 @@ def build_song_meta(video_id: str, title: str, artist: str, album: str | None = 
     if album_id:
         try:
             cover_url = _enrich_from_album(meta, video_id, album_id) or cover_url
-        except Exception:  # noqa: BLE001 — tagging minimal si l'album est inaccessible
+        except Exception:  # noqa: BLE001 — minimal tagging if the album is unreachable
             pass
     return meta, cover_url

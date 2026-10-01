@@ -5,13 +5,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # À pointer vers la bibliothèque musicale scannée par Navidrome
+      # Point this at the music library scanned by Navidrome
       - ./music:/music
-    # Configuration Navidrome et ListenBrainz : copier .env.example en .env
+    # Navidrome and ListenBrainz configuration: copy .env.example to .env
     env_file:
       - path: .env
         required: false
-    # Décommenter pour que les fichiers appartiennent à votre utilisateur
-    # plutôt qu'à root (utile si Navidrome tourne avec ce même UID) :
+    # Uncomment so the files are owned by your user rather than root
+    # (useful if Navidrome runs with the same UID):
     # user: "1000:1000"
     restart: unless-stopped

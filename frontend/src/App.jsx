@@ -53,7 +53,6 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  // Rafraîchit la liste des téléchargements tant qu'un job est actif
   useEffect(() => {
     const poll = () => api.getJobs().then(setJobs).catch(() => {})
     poll()
