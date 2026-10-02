@@ -1,36 +1,31 @@
-import { MusicIcon } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import CoverArt from './CoverArt.jsx'
 import DownloadMenu from './DownloadMenu.jsx'
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from './ResponsiveDialog.jsx'
 
 export default function SongView({ song, navidrome, onClose, onDownloadSong }) {
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+    <ResponsiveDialog open onOpenChange={(open) => !open && onClose()}>
+      <ResponsiveDialogContent className="sm:max-w-lg">
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-stretch">
-          {song.thumbnail ? (
-            <img
-              className="size-28 shrink-0 rounded-lg object-cover sm:size-32"
-              src={song.thumbnail}
-              alt={song.title}
-            />
-          ) : (
-            <div className="bg-muted text-muted-foreground flex size-28 shrink-0 items-center sm:size-32 justify-center rounded-lg">
-              <MusicIcon className="size-10" />
-            </div>
-          )}
-          <DialogHeader className="w-full min-w-0 justify-center gap-3 sm:flex-1">
-            <DialogTitle className="leading-snug">{song.title}</DialogTitle>
-            <DialogDescription>
+          <CoverArt
+            className="size-28 rounded-lg sm:size-32"
+            iconClassName="size-10"
+            src={song.thumbnail}
+            alt={song.title}
+          />
+          <ResponsiveDialogHeader className="w-full min-w-0 justify-center gap-3 sm:flex-1">
+            <ResponsiveDialogTitle className="leading-snug">{song.title}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {song.artist}
               {song.album && ` · ${song.album}`}
               {song.duration && ` · ${song.duration}`}
-            </DialogDescription>
+            </ResponsiveDialogDescription>
             <DownloadMenu
               className="w-full sm:w-auto"
               navidrome={navidrome}
@@ -39,9 +34,9 @@ export default function SongView({ song, navidrome, onClose, onDownloadSong }) {
                 onClose()
               }}
             />
-          </DialogHeader>
+          </ResponsiveDialogHeader>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }

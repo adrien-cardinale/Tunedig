@@ -2,15 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FolderIcon, MoonIcon, Music2Icon, SearchIcon, SunIcon } from 'lucide-react'
 import * as api from './api.js'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import { Toaster } from '@/components/ui/sonner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import AlbumView from './components/AlbumView.jsx'
 import Downloads from './components/Downloads.jsx'
+import ErrorAlert from './components/ErrorAlert.jsx'
 import Results from './components/Results.jsx'
 import SongView from './components/SongView.jsx'
+import TooltipButton from './components/TooltipButton.jsx'
 import Weekly from './components/Weekly.jsx'
 
-function ThemeToggle() {
+function useDarkMode() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
   const toggle = () => {
     const next = !dark
@@ -18,14 +21,19 @@ function ThemeToggle() {
     document.documentElement.classList.toggle('dark', next)
     localStorage.setItem('tunedig-theme', next ? 'dark' : 'light')
   }
+  return [dark, toggle]
+}
+
+function ThemeToggle({ dark, onToggle }) {
   return (
-    <Button variant="ghost" size="icon" onClick={toggle} title="Basculer le thème">
+    <TooltipButton label="Basculer le thème" variant="ghost" size="icon" onClick={onToggle}>
       {dark ? <SunIcon /> : <MoonIcon />}
-    </Button>
+    </TooltipButton>
   )
 }
 
 export default function App() {
+  const [dark, toggleDark] = useDarkMode()
   const [query, setQuery] = useState('')
   const [type, setType] = useState('songs')
   const [results, setResults] = useState(null)
@@ -120,7 +128,7 @@ export default function App() {
                 </span>
                 Tunedig
               </h1>
-              <ThemeToggle />
+              <ThemeToggle dark={dark} onToggle={toggleDark} />
             </div>
             <p className="text-muted-foreground mt-2 flex min-w-0 flex-wrap items-center gap-x-2 text-sm">
               Recherchez, téléchargez, taguez — prêt pour Navidrome
@@ -136,16 +144,18 @@ export default function App() {
           </header>
 
           <form className="mt-5 flex gap-2 sm:mt-7" onSubmit={onSubmit}>
-            <div className="relative min-w-0 flex-1">
-              <SearchIcon className="text-muted-foreground absolute top-1/2 left-3 hidden size-4 -translate-y-1/2 sm:block" />
-              <Input
-                className="h-10 sm:pl-9"
+            <InputGroup className="h-10 min-w-0 flex-1">
+              <InputGroupAddon className="hidden sm:flex">
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label="Recherche"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Artiste, titre, album…"
                 autoFocus={window.matchMedia('(hover: hover)').matches}
               />
-            </div>
+            </InputGroup>
             <Button
               type="submit"
               size="icon"
@@ -175,13 +185,9 @@ export default function App() {
           </Tabs>
 
           {error && (
-            <div
-              className="border-destructive/50 bg-destructive/10 text-destructive mb-5 cursor-pointer rounded-lg border px-4 py-3 text-sm"
-              onClick={() => setError(null)}
-              title="Cliquer pour fermer"
-            >
+            <ErrorAlert className="mb-5" onDismiss={() => setError(null)}>
               {error}
-            </div>
+            </ErrorAlert>
           )}
 
           {type === 'weekly' ? (
@@ -218,6 +224,8 @@ export default function App() {
           onDownloadSong={startSong}
         />
       )}
+
+      <Toaster position="top-center" theme={dark ? 'dark' : 'light'} />
     </div>
   )
 }

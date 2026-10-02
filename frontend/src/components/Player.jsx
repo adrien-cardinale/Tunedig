@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { MusicIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react'
+import { PauseIcon, PlayIcon, XIcon } from 'lucide-react'
 import * as api from '../api.js'
-import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import CoverArt from './CoverArt.jsx'
+import TooltipButton from './TooltipButton.jsx'
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds)) return '0:00'
@@ -9,30 +11,31 @@ function formatTime(seconds) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
-function Cover({ thumbnail }) {
-  if (thumbnail) {
-    return <img className="size-10 shrink-0 rounded-md object-cover" src={thumbnail} alt="" />
-  }
-  return (
-    <div className="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-md">
-      <MusicIcon className="size-4" />
-    </div>
-  )
-}
-
 function SeekBar({ currentTime, duration, onSeek }) {
+  const [dragTime, setDragTime] = useState(null)
+  const shownTime = dragTime ?? currentTime
+
+  const commit = ([time]) => {
+    onSeek(time)
+    setDragTime(null)
+  }
+
   return (
-    <div className="text-muted-foreground flex items-center gap-2 text-xs tabular-nums">
-      <span>{formatTime(currentTime)}</span>
-      <input
-        type="range"
-        className="accent-primary h-1 min-w-0 flex-1 cursor-pointer"
+    <div
+      role="group"
+      aria-label="Position de lecture"
+      className="text-muted-foreground flex items-center gap-2 text-xs tabular-nums"
+    >
+      <span>{formatTime(shownTime)}</span>
+      <Slider
+        className="-my-3.5 h-11 min-w-0 flex-1 cursor-pointer"
         min={0}
-        max={duration || 0}
-        step="any"
-        value={currentTime}
-        aria-label="Position de lecture"
-        onChange={(e) => onSeek(Number(e.target.value))}
+        max={duration || 1}
+        step={1}
+        disabled={!duration}
+        value={[Math.min(shownTime, duration || 1)]}
+        onValueChange={([time]) => setDragTime(time)}
+        onValueCommit={commit}
       />
       <span>{formatTime(duration)}</span>
     </div>
@@ -84,7 +87,7 @@ export default function Player({ track, playing, onTogglePlay, onClose, onEnded 
       />
       <div className="mx-auto max-w-3xl space-y-1 px-4 py-2">
         <div className="flex items-center gap-3">
-          <Cover thumbnail={track.thumbnail} />
+          <CoverArt className="size-10" src={track.thumbnail} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium" title={track.title}>
               {track.title}
@@ -93,24 +96,12 @@ export default function Player({ track, playing, onTogglePlay, onClose, onEnded 
               {track.artist}
             </p>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            title={toggleLabel}
-            aria-label={toggleLabel}
-            onClick={onTogglePlay}
-          >
+          <TooltipButton label={toggleLabel} size="icon" variant="ghost" onClick={onTogglePlay}>
             {playing ? <PauseIcon /> : <PlayIcon />}
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            title="Fermer le lecteur"
-            aria-label="Fermer le lecteur"
-            onClick={onClose}
-          >
+          </TooltipButton>
+          <TooltipButton label="Fermer le lecteur" size="icon" variant="ghost" onClick={onClose}>
             <XIcon />
-          </Button>
+          </TooltipButton>
         </div>
         <SeekBar currentTime={currentTime} duration={duration} onSeek={seek} />
       </div>

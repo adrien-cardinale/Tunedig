@@ -3,16 +3,22 @@ import {
   CheckCircle2Icon,
   ChevronUpIcon,
   DownloadIcon,
-  Loader2Icon,
-  MusicIcon,
   RefreshCwIcon,
   XCircleIcon,
 } from 'lucide-react'
 import { triggerScan } from '../api.js'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Empty, EmptyDescription } from '@/components/ui/empty'
+import { Item, ItemContent, ItemDescription, ItemFooter, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { Progress } from '@/components/ui/progress'
-import { cn } from '@/lib/utils'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Spinner } from '@/components/ui/spinner'
+import CoverArt from './CoverArt.jsx'
+import TooltipButton from './TooltipButton.jsx'
 
 const QUALITY_LABEL = {
   best: 'Originale',
@@ -22,38 +28,40 @@ const QUALITY_LABEL = {
   'mp3-128': 'MP3 128',
 }
 
-function StatusLine({ job }) {
+const STATUS_BADGE_CLASS = 'h-auto justify-start whitespace-normal text-left'
+
+function StatusBadge({ job }) {
   const quality = QUALITY_LABEL[job.quality] || job.quality
   if (job.status === 'done') {
     return (
-      <span className="text-success flex items-center gap-1">
-        <CheckCircle2Icon className="size-3.5" /> Terminé · {quality}
+      <Badge variant="outline" className={`text-success ${STATUS_BADGE_CLASS}`}>
+        <CheckCircle2Icon /> Terminé · {quality}
         {job.scan === 'ok' && ' · scan lancé'}
         {job.playlistId && job.playlist === null && ' · ajout à la playlist…'}
         {job.playlistId && job.playlist === 'ok' && ' · playlist : ok'}
-      </span>
+      </Badge>
     )
   }
   if (job.status === 'error') {
     return (
-      <span className="text-destructive flex items-center gap-1">
-        <XCircleIcon className="size-3.5" /> Erreur
-      </span>
+      <Badge variant="destructive">
+        <XCircleIcon /> Erreur
+      </Badge>
     )
   }
   if (job.status === 'downloading') {
     return (
-      <span className="text-muted-foreground flex items-center gap-1">
-        <Loader2Icon className="size-3.5 animate-spin" />
+      <Badge variant="secondary" className="tabular-nums">
+        <Spinner aria-label="Téléchargement en cours" />
         {Math.round(job.progress * 100)} % · {quality}
-      </span>
+      </Badge>
     )
   }
-  return <span className="text-muted-foreground">En attente · {quality}</span>
+  return <Badge variant="outline">En attente · {quality}</Badge>
 }
 
 function ScanButton() {
-  const [state, setState] = useState('idle') // idle | busy | ok | error
+  const [state, setState] = useState('idle')
   const timer = useRef(null)
 
   const scan = async () => {
@@ -69,16 +77,16 @@ function ScanButton() {
   }
 
   return (
-    <Button
+    <TooltipButton
+      label={
+        state === 'error'
+          ? 'Échec du scan Navidrome'
+          : 'Lancer un scan de la bibliothèque Navidrome'
+      }
       variant="ghost"
       size="icon-sm"
       className={
         state === 'ok' ? 'text-success' : state === 'error' ? 'text-destructive' : ''
-      }
-      title={
-        state === 'error'
-          ? 'Échec du scan Navidrome'
-          : 'Lancer un scan de la bibliothèque Navidrome'
       }
       disabled={state === 'busy'}
       onClick={scan}
@@ -90,56 +98,68 @@ function ScanButton() {
       ) : (
         <RefreshCwIcon className={state === 'busy' ? 'animate-spin' : ''} />
       )}
-    </Button>
+    </TooltipButton>
+  )
+}
+
+function JobAlert({ children, muted = false }) {
+  return (
+    <Alert variant={muted ? 'default' : 'destructive'} className="px-3 py-2">
+      <AlertDescription className="text-xs break-words">{children}</AlertDescription>
+    </Alert>
+  )
+}
+
+function hasFooter(job) {
+  return Boolean(
+    job.status === 'downloading' ||
+      job.error ||
+      (job.scan && job.scan !== 'ok') ||
+      (job.playlistId && job.playlist && job.playlist !== 'ok'),
   )
 }
 
 function JobCard({ job }) {
   return (
-    <div className="bg-card space-y-2.5 rounded-lg border p-3">
-      <div className="flex items-center gap-3">
-        {job.thumbnail ? (
-          <img className="size-10 shrink-0 rounded-md object-cover" src={job.thumbnail} alt="" />
-        ) : (
-          <div className="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-md">
-            <MusicIcon className="size-4" />
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" title={job.title}>
-            {job.title}
-          </p>
-          <p className="text-muted-foreground truncate text-xs">
-            {job.artist}
-            {job.kind !== 'song' && ` · ${job.tracks.length} pistes`}
-          </p>
-          <div className="mt-0.5 text-xs">
-            <StatusLine job={job} />
-          </div>
+    <Item variant="outline" className="bg-card gap-3 rounded-lg p-3">
+      <ItemMedia>
+        <CoverArt className="size-10" src={job.thumbnail} />
+      </ItemMedia>
+      <ItemContent className="min-w-0 gap-0.5">
+        <ItemTitle className="line-clamp-1 w-full" title={job.title}>
+          {job.title}
+        </ItemTitle>
+        <ItemDescription className="line-clamp-1 text-xs">
+          {job.artist}
+          {job.kind !== 'song' && ` · ${job.tracks.length} pistes`}
+        </ItemDescription>
+        <div className="mt-0.5">
+          <StatusBadge job={job} />
         </div>
-      </div>
-      {job.status === 'downloading' && <Progress value={job.progress * 100} />}
-      {job.error && <p className="text-destructive text-xs break-words">{job.error}</p>}
-      {job.scan && job.scan !== 'ok' && (
-        <p className="text-destructive text-xs break-words">Scan Navidrome : {job.scan}</p>
-      )}
-      {job.playlistId && job.playlist && job.playlist !== 'ok' && (
-        <p
-          className={cn(
-            'text-xs break-words',
-            job.playlist.startsWith('partiel') ? 'text-muted-foreground' : 'text-destructive',
+      </ItemContent>
+      {hasFooter(job) && (
+        <ItemFooter className="flex-col items-stretch gap-1.5">
+          {job.status === 'downloading' && <Progress value={job.progress * 100} />}
+          {job.error && <JobAlert>{job.error}</JobAlert>}
+          {job.scan && job.scan !== 'ok' && <JobAlert>Scan Navidrome : {job.scan}</JobAlert>}
+          {job.playlistId && job.playlist && job.playlist !== 'ok' && (
+            <JobAlert muted={job.playlist.startsWith('partiel')}>
+              Playlist : {job.playlist.replace(/^partiel : /, 'partiel ')}
+            </JobAlert>
           )}
-        >
-          Playlist : {job.playlist.replace(/^partiel : /, 'partiel ')}
-        </p>
+        </ItemFooter>
       )}
-    </div>
+    </Item>
   )
 }
 
 function JobList({ jobs }) {
   if (jobs.length === 0) {
-    return <p className="text-muted-foreground text-sm">Aucun téléchargement.</p>
+    return (
+      <Empty className="p-4 md:p-4">
+        <EmptyDescription>Aucun téléchargement.</EmptyDescription>
+      </Empty>
+    )
   }
   return (
     <div className="space-y-2.5">
@@ -170,43 +190,49 @@ function MobileDrawer({ jobs, navidrome }) {
   }, [jobs.length])
 
   return (
-    <div className="bg-card fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] shadow-lg lg:hidden">
-      {open && (
-        <div className="max-h-[60dvh] overflow-y-auto border-b p-4">
-          <JobList jobs={jobs} />
-        </div>
-      )}
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="bg-card fixed inset-x-0 bottom-0 z-40 border-t pb-[env(safe-area-inset-bottom)] shadow-lg lg:hidden"
+    >
+      <CollapsibleContent>
+        <ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[60dvh]">
+          <div className="p-4">
+            <JobList jobs={jobs} />
+          </div>
+        </ScrollArea>
+        <Separator />
+      </CollapsibleContent>
       <div className="flex items-center gap-2 px-4 py-2">
-        <button
-          type="button"
-          className="flex min-h-11 flex-1 cursor-pointer items-center gap-2"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-        >
-          <Title />
-          {activeCount > 0 && <Badge>{activeCount}</Badge>}
-          <ChevronUpIcon
-            className={cn(
-              'text-muted-foreground ml-auto size-4 transition-transform',
-              open && 'rotate-180',
-            )}
-          />
-        </button>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            className="group -mx-2 h-auto min-h-11 flex-1 justify-start gap-2 px-2 py-0 hover:bg-transparent has-[>svg]:px-2 dark:hover:bg-transparent"
+          >
+            <Title />
+            {activeCount > 0 && <Badge>{activeCount}</Badge>}
+            <ChevronUpIcon className="text-muted-foreground ml-auto size-4 transition-transform group-data-[state=open]:rotate-180" />
+          </Button>
+        </CollapsibleTrigger>
         {navidrome && <ScanButton />}
       </div>
-    </div>
+    </Collapsible>
   )
 }
 
 export default function Downloads({ jobs, navidrome }) {
   return (
     <>
-      <aside className="bg-card/40 sticky top-0 hidden h-dvh w-80 shrink-0 overflow-y-auto border-l p-5 lg:block">
-        <div className="mb-4 flex items-center justify-between">
-          <Title />
-          {navidrome && <ScanButton />}
-        </div>
-        <JobList jobs={jobs} />
+      <aside className="bg-card/40 sticky top-0 hidden h-dvh w-80 shrink-0 border-l lg:block">
+        <ScrollArea className="h-full">
+          <div className="p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <Title />
+              {navidrome && <ScanButton />}
+            </div>
+            <JobList jobs={jobs} />
+          </div>
+        </ScrollArea>
       </aside>
       <MobileDrawer jobs={jobs} navidrome={navidrome} />
     </>

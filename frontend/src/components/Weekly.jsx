@@ -1,27 +1,35 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import {
   ChevronDownIcon,
   HeartIcon,
+  InfoIcon,
+  ListMusicIcon,
   ListPlusIcon,
-  MusicIcon,
   PauseIcon,
   PlayIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import * as api from '../api.js'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/ui/empty'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -30,11 +38,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import CoverArt from './CoverArt.jsx'
 import { reloadPlaylists, usePlaylists } from './DownloadMenu.jsx'
+import ErrorAlert from './ErrorAlert.jsx'
 import Player from './Player.jsx'
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from './ResponsiveDialog.jsx'
 import SelectionBar from './SelectionBar.jsx'
+import TooltipButton from './TooltipButton.jsx'
 
 const STATUS = {
   pending: { label: 'En cours', variant: 'secondary' },
@@ -119,91 +141,123 @@ function syncMessage(result) {
   return `« ${result.playlist} » est déjà synchronisée.`
 }
 
+function DecisionToggle({ value, label, children }) {
+  return (
+    <Tooltip>
+      <ToggleGroupItem
+        asChild
+        value={value}
+        aria-label={label}
+        className="touch-target data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground size-8 px-0"
+      >
+        <TooltipTrigger>{children}</TooltipTrigger>
+      </ToggleGroupItem>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function DecisionButtons({ track, busy, onDecide, onMove }) {
   const discardTitle =
     track.status === 'existing'
       ? 'Marquer comme non gardée (fichier conservé)'
       : 'Supprimer le fichier'
+  const decide = (decision) => onDecide(track, decision || track.decision)
   return (
-    <div className="flex shrink-0 items-center gap-1">
+    <ItemActions className="shrink-0 gap-1">
       {onMove && (
-        <Button
+        <TooltipButton
+          label="Déplacer vers une playlist…"
           size="icon-sm"
           variant="ghost"
-          title="Déplacer vers une playlist…"
-          aria-label="Déplacer vers une playlist…"
           disabled={busy}
           onClick={() => onMove(track)}
         >
           <ListPlusIcon />
-        </Button>
+        </TooltipButton>
       )}
-      <Button
-        size="icon-sm"
-        variant={track.decision === 'keep' ? 'default' : 'ghost'}
-        title="Garder"
-        aria-label="Garder"
+      <ToggleGroup
+        type="single"
+        size="sm"
+        spacing={1}
+        value={track.decision || ''}
         disabled={busy}
-        onClick={() => onDecide(track, 'keep')}
+        onValueChange={decide}
       >
-        <HeartIcon />
-      </Button>
-      <Button
-        size="icon-sm"
-        variant={track.decision === 'discard' ? 'default' : 'ghost'}
-        title={discardTitle}
-        aria-label={discardTitle}
-        disabled={busy}
-        onClick={() => onDecide(track, 'discard')}
-      >
-        <Trash2Icon />
-      </Button>
-    </div>
+        <DecisionToggle value="keep" label="Garder">
+          <HeartIcon />
+        </DecisionToggle>
+        <DecisionToggle value="discard" label={discardTitle}>
+          <Trash2Icon />
+        </DecisionToggle>
+      </ToggleGroup>
+    </ItemActions>
   )
 }
 
 function PlayButton({ track, active, onPlay }) {
-  const label = active ? 'Pause' : 'Écouter'
   return (
-    <Button
+    <TooltipButton
+      label={active ? 'Pause' : 'Écouter'}
       size="icon"
       variant="ghost"
       className="shrink-0"
-      title={label}
-      aria-label={label}
       onClick={() => onPlay(track)}
     >
       {active ? <PauseIcon /> : <PlayIcon />}
-    </Button>
+    </TooltipButton>
   )
 }
 
 function RetryButton({ track, busy, onRetry }) {
   return (
-    <Button
+    <TooltipButton
+      label="Réessayer"
       size="icon-sm"
       variant="ghost"
       className="shrink-0"
-      title="Réessayer"
-      aria-label="Réessayer"
       disabled={busy}
       onClick={() => onRetry(track)}
     >
       <RotateCcwIcon />
-    </Button>
+    </TooltipButton>
   )
 }
 
 function SelectCheckbox({ track, checked, busy, onToggleSelect }) {
   return (
-    <input
-      type="checkbox"
-      className="accent-primary size-4 shrink-0 cursor-pointer"
-      aria-label={`Sélectionner « ${track.title} »`}
-      checked={checked}
-      disabled={busy}
-      onChange={() => onToggleSelect(track.mbid)}
-    />
+    <label className="-m-3.5 flex size-11 shrink-0 cursor-pointer items-center justify-center">
+      <Checkbox
+        aria-label={`Sélectionner « ${track.title} »`}
+        checked={checked}
+        disabled={busy}
+        onCheckedChange={() => onToggleSelect(track.mbid)}
+      />
+    </label>
+  )
+}
+
+function StatusBadge({ track }) {
+  const status = STATUS[track.status] || { label: track.status, variant: 'outline' }
+  if (!track.error) return <Badge variant={status.variant}>{status.label}</Badge>
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Badge
+          asChild
+          variant={status.variant}
+          className="touch-target cursor-pointer overflow-visible"
+        >
+          <button type="button">
+            {status.label}
+            <InfoIcon />
+          </button>
+        </Badge>
+      </PopoverTrigger>
+      <PopoverContent className="max-w-[calc(100vw-2rem)] text-sm break-words">
+        {track.error}
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -219,13 +273,14 @@ function TrackRow({
   onPlay,
   onToggleSelect,
 }) {
-  const status = STATUS[track.status] || { label: track.status, variant: 'outline' }
   const deleted = track.status === 'deleted'
   const decidable = DECIDABLE.includes(track.status)
+  const details = [track.artist, track.album].filter(Boolean).join(' · ')
   return (
-    <div
+    <Item
+      variant="outline"
       className={cn(
-        'bg-card flex items-center gap-3 rounded-xl border p-3',
+        'bg-card flex-nowrap gap-3 rounded-xl p-3',
         deleted && 'opacity-60',
         current && 'ring-primary/40 ring-1',
       )}
@@ -241,35 +296,20 @@ function TrackRow({
         ) : (
           <span className="size-4 shrink-0" />
         ))}
-      {track.thumbnail ? (
-        <img
-          className="size-12 shrink-0 rounded-md object-cover"
-          src={track.thumbnail}
-          alt=""
-          loading="lazy"
-        />
-      ) : (
-        <div className="bg-muted text-muted-foreground flex size-12 shrink-0 items-center justify-center rounded-md">
-          <MusicIcon className="size-5" />
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium" title={track.title}>
+      <ItemMedia>
+        <CoverArt className="size-12" iconClassName="size-5" src={track.thumbnail} />
+      </ItemMedia>
+      <ItemContent className="min-w-0 gap-0">
+        <ItemTitle className="line-clamp-1 w-full" title={track.title}>
           {track.title}
-        </p>
-        <p
-          className="text-muted-foreground truncate text-sm"
-          title={[track.artist, track.album].filter(Boolean).join(' · ')}
-        >
-          {track.artist}
-          {track.album && ` · ${track.album}`}
-        </p>
+        </ItemTitle>
+        <ItemDescription className="line-clamp-1" title={details}>
+          {details}
+        </ItemDescription>
         <div className="mt-1 flex items-center gap-2">
-          <Badge variant={status.variant} title={track.error || undefined}>
-            {status.label}
-          </Badge>
+          <StatusBadge track={track} />
         </div>
-      </div>
+      </ItemContent>
       {isPlayable(track) && (
         <PlayButton track={track} active={current && playing} onPlay={onPlay} />
       )}
@@ -279,7 +319,7 @@ function TrackRow({
       {RETRYABLE.includes(track.status) && (
         <RetryButton track={track} busy={busy} onRetry={onRetry} />
       )}
-    </div>
+    </Item>
   )
 }
 
@@ -299,9 +339,11 @@ function TrackList({
 }) {
   if (tracks.length === 0) {
     return (
-      <p className="text-muted-foreground py-4 text-sm">
-        {processing ? 'Recherche des titres en cours…' : 'Aucune nouvelle piste.'}
-      </p>
+      <Empty className="p-4 md:p-4">
+        <EmptyDescription>
+          {processing ? 'Recherche des titres en cours…' : 'Aucune nouvelle piste.'}
+        </EmptyDescription>
+      </Empty>
     )
   }
   return (
@@ -326,76 +368,77 @@ function TrackList({
 }
 
 function OlderPlaylist({ playlist, ...listProps }) {
-  const [open, setOpen] = useState(false)
   const tracks = visibleTracks(playlist)
   return (
-    <section className="border-t pt-4">
-      <button
-        type="button"
-        className="flex min-h-11 w-full cursor-pointer items-center gap-2 text-left"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{playlist.title}</span>
-          <span className="text-muted-foreground text-xs">
-            {formatDate(playlist.date)} · {tracks.length} pistes
-          </span>
-        </span>
-        <ChevronDownIcon
-          className={cn('text-muted-foreground size-4 shrink-0 transition-transform', open && 'rotate-180')}
-        />
-      </button>
-      {open && (
-        <div className="mt-3">
+    <section>
+      <Separator className="mb-4" />
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <Button
+            variant="ghost"
+            className="group -mx-2 h-auto min-h-11 w-[calc(100%+1rem)] justify-start gap-2 px-2 py-1 text-left font-normal whitespace-normal has-[>svg]:px-2"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{playlist.title}</span>
+              <span className="text-muted-foreground text-xs">
+                {formatDate(playlist.date)} · {tracks.length} pistes
+              </span>
+            </span>
+            <ChevronDownIcon className="text-muted-foreground size-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3">
           <TrackList tracks={tracks} {...listProps} />
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </section>
   )
 }
 
 function NewPlaylistField({ onCreated }) {
+  const nameId = useId()
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  const create = async () => {
+  const create = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
     setBusy(true)
     setError(null)
     try {
       const playlist = await api.createPlaylist(name.trim())
       await reloadPlaylists()
       onCreated(playlist.id)
-    } catch (e) {
-      setError(e.message)
+    } catch (err) {
+      setError(err.message)
     } finally {
       setBusy(false)
     }
   }
 
-  const submitOnEnter = (e) => {
-    if (e.key !== 'Enter') return
-    e.preventDefault()
-    if (name.trim() && !busy) create()
-  }
-
   return (
-    <div className="grid gap-2">
-      <div className="flex gap-2">
-        <Input
-          autoFocus
-          placeholder="Nom de la playlist"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={submitOnEnter}
-        />
-        <Button type="button" variant="outline" disabled={busy || !name.trim()} onClick={create}>
-          Créer
-        </Button>
-      </div>
-      {error && <p className="text-destructive text-sm break-words">{error}</p>}
-    </div>
+    <form onSubmit={create}>
+      <Field data-invalid={Boolean(error)} className="gap-2">
+        <FieldLabel htmlFor={nameId} className="sr-only">
+          Nom de la nouvelle playlist
+        </FieldLabel>
+        <ButtonGroup className="w-full">
+          <Input
+            id={nameId}
+            autoFocus
+            placeholder="Nom de la playlist"
+            aria-invalid={Boolean(error)}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button type="submit" variant="outline" disabled={busy || !name.trim()}>
+            Créer
+          </Button>
+        </ButtonGroup>
+        <FieldError className="break-words">{error}</FieldError>
+      </Field>
+    </form>
   )
 }
 
@@ -443,19 +486,19 @@ function MoveDialog({ tracks, navidromePlaylist, initialPlaylistId, onClose, onM
   }
 
   return (
-    <Dialog open onOpenChange={changeOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Déplacer vers une playlist</DialogTitle>
-          <DialogDescription>
+    <ResponsiveDialog open onOpenChange={changeOpen}>
+      <ResponsiveDialogContent>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Déplacer vers une playlist</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             {moveDescription(remaining, navidromePlaylist)}
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
         <Select value={creating ? NEW_PLAYLIST : selectedId} onValueChange={changePlaylist}>
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full" aria-label="Playlist de destination">
             <SelectValue placeholder={playlists ? 'Choisir une playlist' : 'Chargement…'} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent data-vaul-no-drag>
             {targets.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 <span className="truncate">{p.name}</span>
@@ -466,14 +509,14 @@ function MoveDialog({ tracks, navidromePlaylist, initialPlaylistId, onClose, onM
           </SelectContent>
         </Select>
         {creating && <NewPlaylistField onCreated={selectCreated} />}
-        {error && <p className="text-destructive text-sm break-words">{error}</p>}
-        <DialogFooter>
+        {error && <ErrorAlert>{error}</ErrorAlert>}
+        <ResponsiveDialogFooter>
           <Button disabled={busy || creating || !selectedId} onClick={move}>
             Déplacer
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }
 
@@ -502,11 +545,12 @@ function Header({ latest, counts, navidromePlaylist, syncing, onSync, retrying, 
         </p>
         <PlaylistTarget navidromePlaylist={navidromePlaylist} />
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <ButtonGroup className="shrink-0">
         {counts.failed > 0 && (
           <Button
             variant="outline"
             size="sm"
+            className="touch-target"
             disabled={retrying}
             onClick={onRetryAll}
             aria-label="Relancer les échecs"
@@ -518,6 +562,7 @@ function Header({ latest, counts, navidromePlaylist, syncing, onSync, retrying, 
         <Button
           variant="outline"
           size="sm"
+          className="touch-target"
           disabled={syncing}
           onClick={onSync}
           aria-label="Synchroniser"
@@ -525,7 +570,7 @@ function Header({ latest, counts, navidromePlaylist, syncing, onSync, retrying, 
           <RefreshCwIcon className={syncing ? 'animate-spin' : ''} />
           <span className="hidden sm:inline">Synchroniser</span>
         </Button>
-      </div>
+      </ButtonGroup>
     </div>
   )
 }
@@ -533,7 +578,6 @@ function Header({ latest, counts, navidromePlaylist, syncing, onSync, retrying, 
 export default function Weekly({ jobs, navidromePlaylist }) {
   const [playlists, setPlaylists] = useState(null)
   const [error, setError] = useState(null)
-  const [message, setMessage] = useState(null)
   const [syncing, setSyncing] = useState(false)
   const [awaitedPlaylist, setAwaitedPlaylist] = useState(null)
   const [busyId, setBusyId] = useState(null)
@@ -579,7 +623,7 @@ export default function Weekly({ jobs, navidromePlaylist }) {
     setError(null)
     try {
       const result = await api.syncListenbrainz()
-      setMessage(syncMessage(result))
+      toast(syncMessage(result))
       if (result.new) setAwaitedPlaylist(result.mbid)
       await refresh()
     } catch (e) {
@@ -655,7 +699,6 @@ export default function Weekly({ jobs, navidromePlaylist }) {
   const discardSelected = async () => {
     setBatchBusy(true)
     setError(null)
-    setMessage(null)
     const failures = []
     for (const track of selectedTracks) {
       try {
@@ -665,7 +708,7 @@ export default function Weekly({ jobs, navidromePlaylist }) {
       }
     }
     const discarded = selectedTracks.length - failures.length
-    if (discarded > 0) setMessage(`${countLabel(discarded, 'piste', 'supprimée')}.`)
+    if (discarded > 0) toast(`${countLabel(discarded, 'piste', 'supprimée')}.`)
     if (failures.length > 0) {
       setError(`Suppression impossible pour ${countLabel(failures.length, 'piste')} : ${failures[0]}`)
     }
@@ -690,7 +733,7 @@ export default function Weekly({ jobs, navidromePlaylist }) {
     setError(null)
     try {
       const { count } = await api.retryListenbrainzTrack(track.mbid)
-      setMessage(retryMessage(count))
+      toast(retryMessage(count))
       await refresh()
     } catch (e) {
       setError(`Relance impossible : ${e.message}`)
@@ -704,7 +747,7 @@ export default function Weekly({ jobs, navidromePlaylist }) {
     setError(null)
     try {
       const { count } = await api.retryListenbrainz()
-      setMessage(retryMessage(count))
+      toast(retryMessage(count))
       await refresh()
     } catch (e) {
       setError(`Relance impossible : ${e.message}`)
@@ -763,23 +806,10 @@ export default function Weekly({ jobs, navidromePlaylist }) {
           onClear={clearSelection}
         />
       )}
-      {message && (
-        <p
-          className="bg-muted text-muted-foreground mb-4 cursor-pointer rounded-lg px-4 py-3 text-sm"
-          onClick={() => setMessage(null)}
-          title="Cliquer pour fermer"
-        >
-          {message}
-        </p>
-      )}
       {error && (
-        <div
-          className="border-destructive/50 bg-destructive/10 text-destructive mb-4 cursor-pointer rounded-lg border px-4 py-3 text-sm"
-          onClick={() => setError(null)}
-          title="Cliquer pour fermer"
-        >
+        <ErrorAlert className="mb-4" onDismiss={() => setError(null)}>
           {error}
-        </div>
+        </ErrorAlert>
       )}
       {latest ? (
         <div className="space-y-4">
@@ -793,9 +823,14 @@ export default function Weekly({ jobs, navidromePlaylist }) {
           ))}
         </div>
       ) : (
-        <p className="text-muted-foreground py-20 text-center text-sm">
-          Aucune playlist pour l’instant. Lancez une synchronisation.
-        </p>
+        <Empty className="py-20 md:py-20">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ListMusicIcon />
+            </EmptyMedia>
+            <EmptyDescription>Aucune playlist pour l’instant. Lancez une synchronisation.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
       {movingTracks && (
         <MoveDialog

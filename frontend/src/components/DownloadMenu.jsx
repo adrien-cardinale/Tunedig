@@ -1,25 +1,30 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore } from 'react'
 import { DownloadIcon } from 'lucide-react'
 import { createPlaylist, getPlaylists } from '../api.js'
 import { Button } from '@/components/ui/button'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from './ResponsiveDialog.jsx'
+import TooltipButton from './TooltipButton.jsx'
 
 const OPTIONS = [
   { id: 'best', label: 'Originale' },
@@ -29,6 +34,8 @@ const OPTIONS = [
   { id: 'mp3-128', label: 'MP3 128' },
 ]
 
+const QUALITY_HINT = '« Originale » : Opus/M4A sans réencodage'
+const PLAYLIST_HINT = 'Playlist Navidrome où ajouter les pistes'
 const NO_PLAYLIST = 'none'
 const NEW_PLAYLIST = '__new__'
 
@@ -92,7 +99,21 @@ function useSelectedPlaylist(playlists) {
   return selected
 }
 
+function HintedSelectTrigger({ hint, label, className }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <SelectTrigger size="sm" className={className} aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+      </TooltipTrigger>
+      <TooltipContent>{hint}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function NewPlaylistDialog({ open, onOpenChange }) {
+  const nameId = useId()
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -122,28 +143,35 @@ function NewPlaylistDialog({ open, onOpenChange }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent>
+    <ResponsiveDialog open={open} onOpenChange={changeOpen}>
+      <ResponsiveDialogContent>
         <form className="grid gap-4" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Nouvelle playlist</DialogTitle>
-            <DialogDescription>Playlist créée dans Navidrome.</DialogDescription>
-          </DialogHeader>
-          <Input
-            autoFocus
-            placeholder="Nom de la playlist"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          {error && <p className="text-destructive text-sm break-words">{error}</p>}
-          <DialogFooter>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Nouvelle playlist</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>Playlist créée dans Navidrome.</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <Field data-invalid={Boolean(error)}>
+            <FieldLabel htmlFor={nameId} className="sr-only">
+              Nom de la playlist
+            </FieldLabel>
+            <Input
+              id={nameId}
+              autoFocus
+              placeholder="Nom de la playlist"
+              aria-invalid={Boolean(error)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <FieldError className="break-words">{error}</FieldError>
+          </Field>
+          <ResponsiveDialogFooter>
             <Button type="submit" disabled={busy || !name.trim()}>
               Créer
             </Button>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   )
 }
 
@@ -158,20 +186,21 @@ function PlaylistSelect({ compact, playlists, selected }) {
   return (
     <>
       <Select value={selected?.id || NO_PLAYLIST} onValueChange={change}>
-        <SelectTrigger
-          size="sm"
+        <HintedSelectTrigger
+          label="Playlist"
+          hint={PLAYLIST_HINT}
           className={cn('w-[150px] min-w-0', compact ? 'hidden sm:flex' : 'shrink-0')}
-          title="Playlist Navidrome où ajouter les pistes téléchargées"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NO_PLAYLIST}>Aucune playlist</SelectItem>
-          {(playlists || []).map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              <span className="truncate">{p.name}</span>
-            </SelectItem>
-          ))}
+        />
+        <SelectContent data-vaul-no-drag>
+          <SelectGroup>
+            <SelectLabel>{PLAYLIST_HINT}</SelectLabel>
+            <SelectItem value={NO_PLAYLIST}>Aucune playlist</SelectItem>
+            {(playlists || []).map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                <span className="truncate">{p.name}</span>
+              </SelectItem>
+            ))}
+          </SelectGroup>
           <SelectSeparator />
           <SelectItem value={NEW_PLAYLIST}>Nouvelle playlist…</SelectItem>
         </SelectContent>
@@ -198,28 +227,29 @@ export default function DownloadMenu({
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)} onClick={(e) => e.stopPropagation()}>
       <Select value={q} onValueChange={qualityStore.set}>
-        <SelectTrigger
-          size="sm"
+        <HintedSelectTrigger
+          label="Qualité"
+          hint={QUALITY_HINT}
           className={compact ? 'hidden w-[110px] sm:flex' : 'w-[120px] shrink-0'}
-          title="Qualité — « Originale » : Opus/M4A sans réencodage"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {OPTIONS.map((o) => (
-            <SelectItem key={o.id} value={o.id}>
-              {o.label}
-            </SelectItem>
-          ))}
+        />
+        <SelectContent data-vaul-no-drag>
+          <SelectGroup>
+            <SelectLabel>{QUALITY_HINT}</SelectLabel>
+            {OPTIONS.map((o) => (
+              <SelectItem key={o.id} value={o.id}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
         </SelectContent>
       </Select>
       {navidrome && <PlaylistSelect compact={compact} playlists={playlists} selected={selected} />}
       {compact ? (
-        <Button size="icon-sm" variant="secondary" title={downloadTitle} onClick={download}>
+        <TooltipButton label={downloadTitle} size="icon-sm" variant="secondary" onClick={download}>
           <DownloadIcon />
-        </Button>
+        </TooltipButton>
       ) : (
-        <Button className="flex-1 sm:flex-none" title={playlist ? downloadTitle : undefined} onClick={download}>
+        <Button className="flex-1 sm:flex-none" onClick={download}>
           <DownloadIcon />
           {label}
         </Button>
