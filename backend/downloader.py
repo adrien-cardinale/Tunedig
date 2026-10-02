@@ -5,6 +5,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Callable
@@ -31,6 +32,9 @@ QUALITIES = {
 }
 
 AUDIO_EXTS = {".mp3", ".opus", ".ogg", ".m4a", ".aac", ".flac", ".wav"}
+
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_RETRY_DELAY = 5
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +158,21 @@ def tag_file(path: Path, meta: dict, cover: bytes | None) -> None:
     # Other extensions: deliver the file untagged rather than fail
 
 
+def _download_with_retry(opts: dict, url: str) -> None:
+    # yt-dlp never retries a 4xx on the media URL; a new extraction signs fresh URLs.
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+            return
+        except yt_dlp.utils.DownloadError as exc:
+            if attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            logger.warning("Téléchargement en échec (essai %d/%d) : %s",
+                           attempt, DOWNLOAD_ATTEMPTS, exc)
+            time.sleep(DOWNLOAD_RETRY_DELAY * attempt)
+
+
 def _download_audio(video_id: str, dest_dir: Path, progress_cb,
                     quality: str, format_id: str | None = None) -> Path:
     def hook(d):
@@ -177,8 +196,7 @@ def _download_audio(video_id: str, dest_dir: Path, progress_cb,
         "fragment_retries": 10,
         "progress_hooks": [hook],
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([f"https://music.youtube.com/watch?v={video_id}"])
+    _download_with_retry(opts, f"https://music.youtube.com/watch?v={video_id}")
 
     candidates = [
         p for p in dest_dir.glob(f"{video_id}.*") if p.suffix.lower() in AUDIO_EXTS
