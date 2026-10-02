@@ -173,6 +173,8 @@ def _download_audio(video_id: str, dest_dir: Path, progress_cb,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
+        "retries": 10,
+        "fragment_retries": 10,
         "progress_hooks": [hook],
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
