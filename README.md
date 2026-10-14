@@ -20,6 +20,29 @@ Open <http://localhost:8000>. Music is written to the volume mounted on
 Navidrome (and uncomment `user:` so the files are owned by your user rather
 than root).
 
+## Podman (Quadlet)
+
+Systemd units for rootless Podman are in `quadlet/`.
+
+```bash
+podman build -t localhost/tunedig:latest .
+mkdir -p ~/.config/containers/systemd
+cp quadlet/tunedig.container ~/.config/containers/systemd/
+cp .env.example ~/.config/containers/systemd/tunedig.env
+systemctl --user daemon-reload
+systemctl --user start tunedig
+loginctl enable-linger "$USER"
+```
+
+Open <http://localhost:8000>. Music is written to `~/music`: edit `Volume=` in
+`tunedig.container` to point it at the library scanned by Navidrome. In
+rootless mode the files are owned by your user. In `tunedig.env`, write `$`
+as is (the `$$` escape is for Docker Compose only).
+
+With Podman ≥ 5.2, copy `quadlet/tunedig.build` too and set
+`Image=tunedig.build` in `tunedig.container`: systemd then builds the image
+from the repository (path set in `File=`) before starting the container.
+
 ## Manual installation
 
 Requirements: Python ≥ 3.10, Node ≥ 18, `ffmpeg` in the PATH. yt-dlp needs a

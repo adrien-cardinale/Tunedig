@@ -1,0 +1,13 @@
+# Requires Podman >= 5.2. Builds localhost/tunedig:latest from the repository.
+[Unit]
+Description=Build the Tunedig image
+
+[Build]
+ImageTag=localhost/tunedig:latest
+# Path to the repository Dockerfile; the build context is its directory.
+File=%h/Tunedig/Dockerfile
+SetWorkingDirectory=file
+Pull=newer
+
+[Service]
+TimeoutStartSec=900

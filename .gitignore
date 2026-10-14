@@ -7,3 +7,4 @@ dist/
 .env.*
 !.env.example
 music/
+quadlet/tunedig.env

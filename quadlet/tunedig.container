@@ -1,0 +1,30 @@
+[Unit]
+Description=Tunedig - YouTube Music downloader for Navidrome
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+# Image built with: podman build -t localhost/tunedig:latest .
+# Podman >= 5.2: use "Image=tunedig.build" and install tunedig.build instead.
+Image=localhost/tunedig:latest
+ContainerName=tunedig
+PublishPort=8000:8000
+
+# Point this at the music library scanned by Navidrome.
+# Rootless: files are owned by your user. Rootful: see User= below.
+Volume=%h/music:/music:Z
+Environment=MUSIC_DIR=/music
+
+# Navidrome and ListenBrainz configuration (copy .env.example there).
+# Path is relative to this unit file.
+EnvironmentFile=tunedig.env
+
+# Rootful install only: own the files with your UID instead of root.
+# User=1000:1000
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

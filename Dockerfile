@@ -1,5 +1,5 @@
 # Stage 1: frontend build
-FROM node:22-alpine AS frontend
+FROM docker.io/library/node:22-alpine AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: backend + built frontend
-FROM python:3.12-slim
+FROM docker.io/library/python:3.12-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
