@@ -1,6 +1,5 @@
 import base64
 import logging
-import os
 import re
 import shutil
 import tempfile
@@ -14,13 +13,13 @@ import requests
 import yt_dlp
 
 import navidrome
+import replaygain
 from mutagen.flac import Picture
 from mutagen.id3 import APIC, ID3, TALB, TDRC, TIT2, TPE1, TPE2, TRCK
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
-
-MUSIC_DIR = Path(os.environ.get("MUSIC_DIR", str(Path.home() / "music")))
+from settings import MUSIC_DIR
 
 # "best" = extract without re-encoding (Opus/M4A depending on the source).
 QUALITIES = {
@@ -239,6 +238,7 @@ def create_job(kind: str, title: str, artist: str, thumbnail: str | None,
         "progress": 0.0,
         "error": None,
         "scan": None,  # "ok" | "échec : …" once the Navidrome scan has been attempted
+        "replaygain": None,
         "playlistId": playlist_id,
         "playlist": None,
         "tracks": [
@@ -258,6 +258,19 @@ def _track_cover(track: dict, job_cover: bytes | None,
     if url not in cache:
         cache[url] = fetch_cover(url)
     return cache[url] or job_cover
+
+
+def _apply_replaygain(job: dict) -> None:
+    if not replaygain.enabled():
+        return
+    paths = [Path(t["path"]) for t in job["tracks"] if t["status"] == "done" and t.get("path")]
+    if not paths:
+        return
+    try:
+        replaygain.tag_files(paths, album=job["kind"] == "album")
+        job["replaygain"] = "ok"
+    except Exception as exc:  # noqa: BLE001 — ReplayGain must not fail the job
+        job["replaygain"] = f"échec : {exc}"
 
 
 def _finish_job(job: dict, errors: list[str]) -> None:
@@ -341,6 +354,7 @@ def run_job(job: dict, tracks: list[dict], cover_url: str | None, quality: str,
                 errors.append(f"{track['title']}: {exc}")
             job["progress"] = (i + 1) / len(tracks)
 
+    _apply_replaygain(job)
     _finish_job(job, errors)
     if playlist_id and job["status"] != "error":
         _add_to_playlist(job, tracks, playlist_id)

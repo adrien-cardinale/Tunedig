@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  AudioWaveformIcon,
   CheckCircle2Icon,
   ChevronUpIcon,
   DownloadIcon,
   RefreshCwIcon,
   XCircleIcon,
 } from 'lucide-react'
-import { triggerScan } from '../api.js'
+import { getReplaygainStatus, startReplaygainScan, triggerScan } from '../api.js'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -102,6 +103,75 @@ function ScanButton() {
   )
 }
 
+const REPLAYGAIN_POLL_MS = 2000
+
+function ReplaygainButton() {
+  const [status, setStatus] = useState('idle')
+  const timer = useRef(null)
+
+  useEffect(() => {
+    getReplaygainStatus()
+      .then((s) => setStatus(s.status))
+      .catch(() => {})
+    return () => clearTimeout(timer.current)
+  }, [])
+
+  useEffect(() => {
+    if (status !== 'running') return
+    const id = setInterval(() => {
+      getReplaygainStatus()
+        .then((s) => setStatus(s.status))
+        .catch(() => setStatus('error'))
+    }, REPLAYGAIN_POLL_MS)
+    return () => clearInterval(id)
+  }, [status])
+
+  const start = async () => {
+    clearTimeout(timer.current)
+    setStatus('running')
+    try {
+      const s = await startReplaygainScan(false)
+      setStatus(s.status)
+    } catch {
+      setStatus('error')
+      timer.current = setTimeout(() => setStatus('idle'), 3000)
+    }
+  }
+
+  const running = status === 'running'
+  return (
+    <TooltipButton
+      label={
+        running
+          ? 'ReplayGain en cours…'
+          : status === 'error'
+            ? 'Échec du ReplayGain'
+            : 'Calculer le ReplayGain de toute la bibliothèque'
+      }
+      variant="ghost"
+      size="icon-sm"
+      className={status === 'error' ? 'text-destructive' : ''}
+      disabled={running}
+      onClick={start}
+    >
+      {status === 'error' ? (
+        <XCircleIcon />
+      ) : (
+        <AudioWaveformIcon className={running ? 'animate-pulse' : ''} />
+      )}
+    </TooltipButton>
+  )
+}
+
+function LibraryActions({ navidrome, replaygain }) {
+  return (
+    <div className="flex items-center gap-1">
+      {replaygain && <ReplaygainButton />}
+      {navidrome && <ScanButton />}
+    </div>
+  )
+}
+
 function JobAlert({ children, muted = false }) {
   return (
     <Alert variant={muted ? 'default' : 'destructive'} className="px-3 py-2">
@@ -115,6 +185,7 @@ function hasFooter(job) {
     job.status === 'downloading' ||
       job.error ||
       (job.scan && job.scan !== 'ok') ||
+      (job.replaygain && job.replaygain !== 'ok') ||
       (job.playlistId && job.playlist && job.playlist !== 'ok'),
   )
 }
@@ -142,6 +213,9 @@ function JobCard({ job }) {
           {job.status === 'downloading' && <Progress value={job.progress * 100} />}
           {job.error && <JobAlert>{job.error}</JobAlert>}
           {job.scan && job.scan !== 'ok' && <JobAlert>Scan Navidrome : {job.scan}</JobAlert>}
+          {job.replaygain && job.replaygain !== 'ok' && (
+            <JobAlert>ReplayGain : {job.replaygain}</JobAlert>
+          )}
           {job.playlistId && job.playlist && job.playlist !== 'ok' && (
             <JobAlert muted={job.playlist.startsWith('partiel')}>
               Playlist : {job.playlist.replace(/^partiel : /, 'partiel ')}
@@ -179,7 +253,7 @@ function Title() {
   )
 }
 
-function MobileDrawer({ jobs, navidrome }) {
+function MobileDrawer({ jobs, navidrome, replaygain }) {
   const [open, setOpen] = useState(false)
   const previousCount = useRef(jobs.length)
   const activeCount = jobs.filter((j) => j.status !== 'done' && j.status !== 'error').length
@@ -214,13 +288,13 @@ function MobileDrawer({ jobs, navidrome }) {
             <ChevronUpIcon className="text-muted-foreground ml-auto size-4 transition-transform group-data-[state=open]:rotate-180" />
           </Button>
         </CollapsibleTrigger>
-        {navidrome && <ScanButton />}
+        <LibraryActions navidrome={navidrome} replaygain={replaygain} />
       </div>
     </Collapsible>
   )
 }
 
-export default function Downloads({ jobs, navidrome }) {
+export default function Downloads({ jobs, navidrome, replaygain }) {
   return (
     <>
       <aside className="bg-card/40 sticky top-0 hidden h-dvh w-80 shrink-0 border-l lg:block">
@@ -228,13 +302,13 @@ export default function Downloads({ jobs, navidrome }) {
           <div className="p-5">
             <div className="mb-4 flex items-center justify-between">
               <Title />
-              {navidrome && <ScanButton />}
+              <LibraryActions navidrome={navidrome} replaygain={replaygain} />
             </div>
             <JobList jobs={jobs} />
           </div>
         </ScrollArea>
       </aside>
-      <MobileDrawer jobs={jobs} navidrome={navidrome} />
+      <MobileDrawer jobs={jobs} navidrome={navidrome} replaygain={replaygain} />
     </>
   )
 }

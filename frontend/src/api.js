@@ -50,6 +50,15 @@ export const getConfig = () => request('/api/config')
 
 export const triggerScan = () => request('/api/scan', { method: 'POST' })
 
+export const startReplaygainScan = (force = false) =>
+  request('/api/replaygain/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  })
+
+export const getReplaygainStatus = () => request('/api/replaygain/scan')
+
 export const getListenbrainzTracks = () => request('/api/listenbrainz/tracks')
 
 export const syncListenbrainz = () => request('/api/listenbrainz/sync', { method: 'POST' })

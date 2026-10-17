@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 import listenbrainz
 import navidrome
+import replaygain
 from catalog import artists_str, build_song_meta, song_from_search, ytmusic
 from downloader import (
     MUSIC_DIR,
@@ -177,6 +178,7 @@ def config():
     return {
         "musicDir": str(MUSIC_DIR),
         "navidrome": navidrome.enabled(),
+        "replaygain": replaygain.enabled(),
         "listenbrainz": listenbrainz.enabled(),
         "listenbrainzPlaylist": (
             listenbrainz.LISTENBRAINZ_PLAYLIST_NAME if navidrome.enabled() else None
@@ -191,6 +193,25 @@ def scan():
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"Scan impossible : {exc}") from exc
     return {"ok": True}
+
+
+class ReplaygainScanRequest(BaseModel):
+    force: bool = False
+
+
+@app.post("/api/replaygain/scan")
+def replaygain_scan(req: ReplaygainScanRequest):
+    if not replaygain.enabled():
+        raise HTTPException(400, "ReplayGain désactivé ou rsgain introuvable")
+    try:
+        return replaygain.start_library_scan(req.force)
+    except replaygain.ScanAlreadyRunning as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
+@app.get("/api/replaygain/scan")
+def replaygain_scan_status():
+    return replaygain.library_status()
 
 
 def _require_navidrome() -> None:

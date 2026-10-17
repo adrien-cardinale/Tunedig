@@ -49,6 +49,8 @@ Requirements: Python ≥ 3.10, Node ≥ 18, `ffmpeg` in the PATH. yt-dlp needs a
 JavaScript runtime to solve YouTube's challenges: the `deno` pip package pulled
 by `requirements.txt` provides one, as long as the virtualenv's `bin` is in the
 PATH (activate it, or run through `.venv/bin/uvicorn` with `PATH=.venv/bin:$PATH`).
+Optional: [`rsgain`](https://github.com/complexlogic/rsgain) in the PATH for
+ReplayGain tags (Debian/Ubuntu: `apt install rsgain`).
 
 ```bash
 cd backend
@@ -124,6 +126,32 @@ file at each scan, so Navidrome blocks manual changes, even for admins. In all
 these cases the Subsonic API answers "User is not authorized for the given
 operation". To use such a playlist, open it in Navidrome, click *Edit* and
 disable *Auto-import*; the playlist then stops following the file.
+
+## ReplayGain
+
+When [`rsgain`](https://github.com/complexlogic/rsgain) is in the PATH (it is
+included in the Docker image), ReplayGain tags are computed at the end of each
+download job. Only tags are written: the audio stays untouched. An album job
+gets album gain and track gain; a single or a playlist gets track gain only.
+Tracks already in the library are rescanned with the rest of the album job.
+
+Navidrome applies these tags during playback: pick the ReplayGain mode (track
+or album) in the player preferences.
+
+The waveform button in the Downloads panel computes ReplayGain for the whole
+library, one album per folder. It skips files that already have ReplayGain
+tags. To recompute everything, call the API directly:
+
+```bash
+curl -X POST http://localhost:8000/api/replaygain/scan \
+  -H 'Content-Type: application/json' -d '{"force": true}'
+```
+
+`GET /api/replaygain/scan` returns the state of the current pass. A Navidrome
+scan is triggered when a pass succeeds.
+
+Set `REPLAYGAIN=0` to disable the feature. Without `rsgain` in the PATH, it is
+inactive.
 
 ## ListenBrainz Weekly Exploration
 

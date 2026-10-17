@@ -44,6 +44,7 @@ export default function App() {
   const [jobs, setJobs] = useState([])
   const [musicDir, setMusicDir] = useState('')
   const [navidrome, setNavidrome] = useState(false)
+  const [replaygain, setReplaygain] = useState(false)
   const [listenbrainz, setListenbrainz] = useState(false)
   const [listenbrainzPlaylist, setListenbrainzPlaylist] = useState(null)
   const lastSearch = useRef('')
@@ -55,6 +56,7 @@ export default function App() {
       .then((c) => {
         setMusicDir(c.musicDir)
         setNavidrome(c.navidrome)
+        setReplaygain(c.replaygain)
         setListenbrainz(c.listenbrainz)
         setListenbrainzPlaylist(c.listenbrainzPlaylist)
       })
@@ -204,7 +206,7 @@ export default function App() {
         </div>
       </main>
 
-      <Downloads jobs={jobs} navidrome={navidrome} />
+      <Downloads jobs={jobs} navidrome={navidrome} replaygain={replaygain} />
 
       {openSong && (
         <SongView

@@ -9,7 +9,7 @@ RUN npm run build
 # Stage 2: backend + built frontend
 FROM docker.io/library/python:3.12-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg rsgain \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend
